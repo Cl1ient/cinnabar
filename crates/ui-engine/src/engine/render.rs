@@ -201,23 +201,26 @@ fn edit_texts(
         .filter_map(|region| {
             let (target, _) = region.widget.edit.as_ref()?.text_target.as_ref()?;
             nodes.iter().find_map(|node| match &node.draw {
-                Draw::Text { scale, options, .. } if node.key == *target => Some(EditText {
-                    key: region.key.clone(),
-                    left: left
-                        + pixel_snap::positioned(
-                            [node.dest.x, node.dest.y, node.dest.w, node.dest.h],
-                            metrics.gui_scale,
-                            px,
-                        )[0],
-                    scale: label_metrics(
+                Draw::Text { scale, options, .. } if node.key == *target => {
+                    let label = label_metrics(
                         metrics,
                         font,
                         font.font_named(options.font_type.as_deref().unwrap_or("default")),
                         *scale,
-                    )
-                    .factor(),
-                    font: options.font_type.clone(),
-                }),
+                    );
+                    Some(EditText {
+                        key: region.key.clone(),
+                        left: left
+                            + pixel_snap::positioned(
+                                [node.dest.x, node.dest.y, node.dest.w, node.dest.h],
+                                metrics.gui_scale,
+                                px,
+                            )[0],
+                        scale: label.factor(),
+                        effect_scale_1024: label.effect_scale_1024(),
+                        font: options.font_type.clone(),
+                    })
+                }
                 _ => None,
             })
         })

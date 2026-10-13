@@ -310,3 +310,389 @@ fn late_spawn_section_bypasses_the_distant_ingress_backlog() {
     let completion = stream.mesh_rx.recv_timeout(Duration::from_secs(2)).unwrap();
     stream.accept_mesh_completion(completion);
 }
+
+/// A nearby column arriving after the camera settles cannot wait behind distant propagation.
+#[test]
+fn stationary_spawn_light_competes_with_far_propagation_wakeups() {
+    let mut stream = lit_stream(0);
+    let view = SchedulerView {
+        position: [8.0, 81.62, 8.0],
+        forward: None,
+        startup_center: None,
+    };
+    stream
+        .lighting
+        .jobs
+        .refresh
+        .refresh(view, &mut stream.lighting.jobs.lanes, None, |_, _| true);
+    let range = vanilla_dimension_range(0).unwrap();
+    let near = SubChunkKey::new(0, 0, 5, 0);
+    let top = SubChunkKey::new(
+        0,
+        0,
+        range.base_sub_chunk_y + range.sub_chunk_count as i32 - 1,
+        0,
+    );
+    let far = SubChunkKey::new(0, scheduler::NEAR_CAMERA_RADIUS * 2, 5, 0);
+    for key in [near, top, far] {
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        install_current_light(&mut stream, key, 0, 0, false);
+        stream.mark_light_dirty_exact(key).unwrap();
+    }
+    stream
+        .lighting
+        .priority_wakeups
+        .insert(far, stream.lighting.jobs.pending[&far].revision);
+    assert_eq!(stream.dispatch_light_jobs(view.position, 1), 1);
+    assert!(
+        stream.lighting.jobs.in_flight.contains_key(&top),
+        "the nearby column's skylight dependency must run before a distant wakeup"
+    );
+    let completion = stream
+        .lighting
+        .rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(completion.key, top);
+    stream.accept_light_completion(completion);
+}
+
+/// Distant meshes already queued ready, at a settled camera, with an expired slice.
+fn stationary_stream_with_blocked_far_meshes() -> (WorldStream, SchedulerView) {
+    let mut stream = lit_stream(1);
+    let view = SchedulerView {
+        position: [8.0; 3],
+        forward: None,
+        startup_center: None,
+    };
+    stream
+        .mesh_jobs
+        .refresh
+        .refresh(view, &mut stream.mesh_jobs.lanes, None, |_, _| true);
+    for x in [
+        scheduler::NEAR_CAMERA_RADIUS + 1,
+        scheduler::NEAR_CAMERA_RADIUS + 2,
+    ] {
+        let key = SubChunkKey::new(1, x, 0, 0);
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        stream.resident.insert(key);
+        let revision = stream.mark_dirty_exact(key, Instant::now());
+        stream.mesh_jobs.lanes[RESIDENT_MESH_LANE]
+            .ready
+            .push(PendingSchedulerCandidate::new(key, revision, view, false));
+    }
+    stream.mesh_jobs.scan.clear();
+    stream.poll_deadline = Some(Instant::now() - Duration::from_secs(1));
+    (stream, view)
+}
+
+fn finish_mesh(stream: &mut WorldStream, key: SubChunkKey) {
+    assert!(stream.mesh_jobs.in_flight.contains_key(&key));
+    let completion = stream.mesh_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(completion.key, key);
+    stream.accept_mesh_completion(completion);
+}
+
+/// Fresh nearby geometry must dispatch ahead of blocked distant work once the camera settles.
+#[test]
+fn stationary_spawn_mesh_competes_with_blocked_far_work() {
+    let (mut stream, view) = stationary_stream_with_blocked_far_meshes();
+    let near = SubChunkKey::new(1, 0, 0, 0);
+    stream
+        .authority
+        .commit_sub_chunk(near, super::uniform_sub_chunk(2))
+        .unwrap();
+    install_current_light(&mut stream, near, 0, 0, false);
+    stream.mark_dirty_exact(near, Instant::now());
+    assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
+    finish_mesh(&mut stream, near);
+}
+
+/// A nearby mesh deferred for its missing light, with no new scan record pending.
+fn deferred_stationary_spawn_mesh() -> (WorldStream, SchedulerView, SubChunkKey, u64) {
+    let (mut stream, view) = stationary_stream_with_blocked_far_meshes();
+    let near = SubChunkKey::new(1, 0, 0, 0);
+    stream
+        .authority
+        .commit_sub_chunk(near, super::uniform_sub_chunk(2))
+        .unwrap();
+    stream.resident.insert(near);
+    let revision = stream.mark_dirty_exact(near, Instant::now());
+    assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 0);
+    assert!(stream.mesh_jobs.scan.is_empty());
+    (stream, view, near, revision)
+}
+
+/// A coalesced light invalidation must wake the deferred mesh, even past a full worker pool.
+#[test]
+fn stationary_spawn_mesh_wakes_when_coalesced_light_becomes_ready() {
+    let (mut stream, view, near, revision) = deferred_stationary_spawn_mesh();
+    install_current_light(&mut stream, near, 0, 0, false);
+    stream.mark_changed_light_mesh_dependents(near, [false; 6], Instant::now(), false);
+    assert_eq!(stream.mesh_jobs.pending[&near].revision, revision);
+    assert!(stream.mesh_jobs.scan.is_empty());
+    stream
+        .admitted_mesh_jobs
+        .store(usize::MAX, Ordering::Release);
+    assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 0);
+    stream.admitted_mesh_jobs.store(0, Ordering::Release);
+    assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
+    finish_mesh(&mut stream, near);
+}
+
+/// Light that completes unchanged invalidates nothing yet must still wake the deferred mesh.
+#[test]
+fn stationary_spawn_mesh_wakes_after_unchanged_light_completion() {
+    let (mut stream, view, near, revision) = deferred_stationary_spawn_mesh();
+    install_current_light(&mut stream, near, 0, 0, false);
+    let direct = stream.lighting.direct_sky[&near].clone();
+    stream.finish_accepted_light_completion(near, 0, &direct, [false; 6], false);
+    assert_eq!(stream.mesh_jobs.pending[&near].revision, revision);
+    assert!(stream.mesh_jobs.scan.is_empty());
+    assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
+    finish_mesh(&mut stream, near);
+}
+
+/// Unrelated nearby wakeups must not re-offer a blocked nearest mesh ahead of ready geometry.
+#[test]
+fn blocked_nearest_mesh_stays_deferred_through_unrelated_wakeups() {
+    let mut stream = lit_stream(1);
+    let view = SchedulerView {
+        position: [8.0; 3],
+        forward: None,
+        startup_center: None,
+    };
+    stream
+        .mesh_jobs
+        .refresh
+        .refresh(view, &mut stream.mesh_jobs.lanes, None, |_, _| true);
+    let blocked = SubChunkKey::new(1, 0, 0, 0);
+    let ready = SubChunkKey::new(1, 2, 0, 0);
+    let unrelated = SubChunkKey::new(1, -3, 0, 0);
+    for key in [blocked, ready, unrelated] {
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        stream.resident.insert(key);
+    }
+    install_current_light(&mut stream, ready, 0, 0, false);
+    for key in [blocked, ready, unrelated] {
+        stream.mark_dirty_exact(key, Instant::now());
+    }
+    stream.poll_deadline = Some(Instant::now() - Duration::from_secs(1));
+    for _ in 0..4 {
+        stream.mark_changed_light_mesh_dependents(unrelated, [false; 6], Instant::now(), false);
+        stream.dispatch_mesh_jobs(view.position, 1);
+        if stream.mesh_jobs.in_flight.contains_key(&ready) {
+            break;
+        }
+    }
+    finish_mesh(&mut stream, ready);
+}
+
+/// A settled startup camera with a blocked spawn mesh ahead of ready distant geometry.
+fn stationary_stream_with_blocked_spawn_mesh() -> (WorldStream, SchedulerView, SubChunkKey) {
+    let mut stream = lit_stream(1);
+    stream.set_startup_priority(true);
+    let view = stream.scheduler_view([8.0, 80.0, 8.0]);
+    stream
+        .mesh_jobs
+        .refresh
+        .refresh(view, &mut stream.mesh_jobs.lanes, None, |_, _| true);
+    let blocked = SubChunkKey::new(1, 0, 5, 0);
+    let distant = SubChunkKey::new(1, scheduler::NEAR_CAMERA_RADIUS * 2, 5, 0);
+    for (key, ready) in [(blocked, false), (distant, true)] {
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        install_current_light(&mut stream, key, 0, 0, false);
+        let revision = stream.mark_dirty_exact(key, Instant::now());
+        let candidate = PendingSchedulerCandidate::new(key, revision, view, false);
+        let lane = &mut stream.mesh_jobs.lanes[RESIDENT_MESH_LANE];
+        if ready {
+            lane.ready.push(candidate);
+        } else {
+            lane.deferred.push(candidate);
+        }
+    }
+    stream.mark_light_dirty_exact(blocked).unwrap();
+    stream.mesh_jobs.scan.clear();
+    stream.mesh_jobs.startup_scan.clear();
+    stream.poll_deadline = Some(Instant::now() - Duration::from_secs(1));
+    (stream, view, blocked)
+}
+
+/// Repeated light wakeups cannot make an unrelated blocked mesh bypass its startup backoff.
+#[test]
+fn stationary_mesh_light_wakeups_preserve_unrelated_backoff() {
+    for changed in [false, true] {
+        let (mut stream, view, blocked) = stationary_stream_with_blocked_spawn_mesh();
+        let near = SubChunkKey::new(1, scheduler::NEAR_CAMERA_RADIUS, 5, 0);
+        stream
+            .authority
+            .commit_sub_chunk(near, super::uniform_sub_chunk(2))
+            .unwrap();
+        install_current_light(&mut stream, near, 0, 0, false);
+        let revision = stream.mark_dirty_exact(near, Instant::now());
+        stream.mesh_jobs.scan.clear();
+        stream.mesh_jobs.lanes[RESIDENT_MESH_LANE]
+            .deferred
+            .push(PendingSchedulerCandidate::new(near, revision, view, false));
+        let mut dispatched = false;
+        for _ in 0..4 {
+            if changed {
+                stream.mark_changed_light_mesh_dependents(near, [false; 6], Instant::now(), false);
+            } else {
+                let direct = stream.lighting.direct_sky[&near].clone();
+                stream.finish_accepted_light_completion(near, 0, &direct, [false; 6], false);
+            }
+            assert_eq!(stream.mesh_jobs.pending[&near].revision, revision);
+            if stream.dispatch_mesh_jobs(view.position, 1) == 1 {
+                dispatched = true;
+                break;
+            }
+        }
+        assert!(dispatched && stream.mesh_jobs.in_flight.contains_key(&near));
+        assert!(stream.mesh_jobs.pending.contains_key(&blocked));
+        finish_mesh(&mut stream, near);
+    }
+}
+
+/// Fresh nearby ingress cannot repeatedly probe an unrelated mesh that is cooling down.
+#[test]
+fn stationary_mesh_ingress_preserves_unrelated_backoff() {
+    let (mut stream, view, blocked) = stationary_stream_with_blocked_spawn_mesh();
+    let mut dispatched = None;
+    for z in 0..4 {
+        let near = SubChunkKey::new(1, scheduler::NEAR_CAMERA_RADIUS, 5, z);
+        stream
+            .authority
+            .commit_sub_chunk(near, super::uniform_sub_chunk(2))
+            .unwrap();
+        install_current_light(&mut stream, near, 0, 0, false);
+        stream.mark_dirty_exact(near, Instant::now());
+        if stream.dispatch_mesh_jobs(view.position, 1) == 1 {
+            dispatched = (0..=z)
+                .map(|z| SubChunkKey::new(1, scheduler::NEAR_CAMERA_RADIUS, 5, z))
+                .find(|key| stream.mesh_jobs.in_flight.contains_key(key));
+            assert!(dispatched.is_some(), "ready nearby geometry must dispatch");
+            break;
+        }
+    }
+    let near = dispatched.expect("nearby ingress must dispatch while the blocked mesh backs off");
+    assert!(stream.mesh_jobs.pending.contains_key(&blocked));
+    finish_mesh(&mut stream, near);
+}
+
+/// A woken mesh the deadline cuts off must stay offered rather than fall behind distant work.
+#[test]
+fn deadline_keeps_an_unexamined_woken_mesh_for_the_next_poll() {
+    let (mut stream, view) = stationary_stream_with_blocked_far_meshes();
+    let blocked = SubChunkKey::new(1, 0, 0, 0);
+    let ready = [
+        SubChunkKey::new(1, -3, 0, 0),
+        SubChunkKey::new(1, 0, 0, scheduler::NEAR_CAMERA_RADIUS),
+    ];
+    for key in std::iter::once(blocked).chain(ready) {
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        stream.resident.insert(key);
+    }
+    for key in ready {
+        install_current_light(&mut stream, key, 0, 0, false);
+    }
+    for key in std::iter::once(blocked).chain(ready) {
+        let revision = stream.mark_dirty_exact(key, Instant::now());
+        stream.mesh_jobs.lanes[RESIDENT_MESH_LANE]
+            .deferred
+            .push(PendingSchedulerCandidate::new(key, revision, view, false));
+    }
+    stream.mesh_jobs.scan.clear();
+    for key in std::iter::once(blocked).chain(ready) {
+        stream.mark_changed_light_mesh_dependents(key, [false; 6], Instant::now(), false);
+    }
+    assert_eq!(
+        stream.dispatch_mesh_jobs(view.position, 1),
+        0,
+        "the blocked nearest mesh spends the expired slice"
+    );
+    for key in ready {
+        assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
+        finish_mesh(&mut stream, key);
+    }
+}
+
+/// Wakeups beyond the probe limit must survive until higher-ranked work retires.
+#[test]
+fn truncation_keeps_unexamined_woken_meshes_for_later_polls() {
+    let (mut stream, view) = stationary_stream_with_blocked_far_meshes();
+    let radius = scheduler::NEAR_CAMERA_RADIUS;
+    let ready = SubChunkKey::new(1, radius, radius, radius);
+    let earlier: Vec<_> = scheduler::near_camera_keys(view, ready.dimension)
+        .filter(|key| view.rank(*key) < view.rank(ready))
+        .take(MAX_PENDING_SCHEDULER_SCANS_PER_POLL)
+        .collect();
+    assert_eq!(earlier.len(), MAX_PENDING_SCHEDULER_SCANS_PER_POLL);
+    for key in earlier.iter().copied().chain([ready]) {
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        install_current_light(&mut stream, key, 0, 0, false);
+        let revision = stream.mark_dirty_exact(key, Instant::now());
+        stream.mesh_jobs.lanes[RESIDENT_MESH_LANE]
+            .deferred
+            .push(PendingSchedulerCandidate::new(key, revision, view, false));
+        stream.mesh_jobs.refresh.wake_near(key);
+    }
+    stream.mesh_jobs.scan.clear();
+    stream
+        .admitted_mesh_jobs
+        .store(usize::MAX, Ordering::Release);
+    assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 0);
+    stream.mesh_jobs.pending.retain(|key, _| *key == ready);
+    stream.admitted_mesh_jobs.store(0, Ordering::Release);
+    assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
+    finish_mesh(&mut stream, ready);
+}
+
+/// A camera move cannot discard an already woken mesh while worker capacity is exhausted.
+#[test]
+fn capacity_retry_keeps_a_woken_mesh_after_the_camera_moves() {
+    let (mut stream, view) = stationary_stream_with_blocked_far_meshes();
+    let earlier: Vec<_> = stream.mesh_jobs.pending.keys().copied().collect();
+    let ready = SubChunkKey::new(1, -scheduler::NEAR_CAMERA_RADIUS, 0, 0);
+    stream
+        .authority
+        .commit_sub_chunk(ready, super::uniform_sub_chunk(2))
+        .unwrap();
+    install_current_light(&mut stream, ready, 0, 0, false);
+    let revision = stream.mark_dirty_exact(ready, Instant::now());
+    stream.mesh_jobs.scan.clear();
+    stream.mesh_jobs.lanes[RESIDENT_MESH_LANE]
+        .deferred
+        .push(PendingSchedulerCandidate::new(ready, revision, view, false));
+    stream.mesh_jobs.refresh.wake_near(ready);
+    let moved = stream.scheduler_view([view.position[0] + 16.0, 8.0, 8.0]);
+    assert!(!scheduler::mesh_is_near(moved, ready));
+    stream
+        .admitted_mesh_jobs
+        .store(usize::MAX, Ordering::Release);
+    assert_eq!(stream.dispatch_mesh_jobs(moved.position, 1), 0);
+    for key in earlier {
+        stream.mesh_jobs.pending.remove(&key);
+    }
+    stream.admitted_mesh_jobs.store(0, Ordering::Release);
+    assert_eq!(stream.dispatch_mesh_jobs(moved.position, 1), 1);
+    finish_mesh(&mut stream, ready);
+}

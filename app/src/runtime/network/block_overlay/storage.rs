@@ -17,7 +17,7 @@ pub(super) struct FrameStorage {
 }
 
 impl Builder<'_> {
-    /// Reuses source frames before allocating layers, falling back only for absent rasters.
+    /// Reuses cached source frames before checking capacity for new image reads.
     pub(super) fn load_texture(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
         let source = self.catalog.flipbook(key, selector).cloned();
         if let Some(source) = source.as_ref() {
@@ -25,36 +25,48 @@ impl Builder<'_> {
             if let Some(&storage) = self.frame_storage.get(&storage_key) {
                 return self.bind_frames(storage, Some(source), selector);
             }
-            if let Some(texture) = self.catalog.decode_path(key, &source.texture_path) {
-                let storage = self.store_frames(key, storage_key, texture, Some(source))?;
-                return self.bind_frames(storage, Some(source), selector);
+            // At capacity, an absent source can still use cached static fallback storage.
+            if self.sources.len() < self.max_layers || self.catalog.has_source(&source.texture_path)
+            {
+                let available = self.remaining_capacity(key)?;
+                if let Some(texture) = self.catalog.decode_path(key, &source.texture_path) {
+                    let storage =
+                        self.store_frames(storage_key, texture, Some(source), available)?;
+                    return self.bind_frames(storage, Some(source), selector);
+                }
             }
         }
         let storage_key = self.catalog.storage_key(key, None)?;
         let storage = match self.frame_storage.get(&storage_key) {
             Some(&storage) => storage,
             None => {
+                let available = self.remaining_capacity(key)?;
                 let texture = self.catalog.decode(key)?;
-                self.store_frames(key, storage_key, texture, None)?
+                self.store_frames(storage_key, texture, None, available)?
             }
         };
         self.bind_frames(storage, None, selector)
     }
 
-    /// Admits a bounded frame sequence once and records its shared physical storage.
-    fn store_frames(
-        &mut self,
-        key: &str,
-        storage_key: TextureStorageKey,
-        mut texture: DecodedTexture,
-        source: Option<&FlipbookSource>,
-    ) -> Option<FrameStorage> {
+    /// Returns available layers, counting a full-array rejection before any image read.
+    fn remaining_capacity(&mut self, key: &str) -> Option<usize> {
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
             self.gaps.saturated_textures += 1;
             self.catalog.report_full(key);
             return None;
         }
+        Some(available)
+    }
+
+    /// Admits a frame sequence within the available capacity and records shared storage.
+    fn store_frames(
+        &mut self,
+        storage_key: TextureStorageKey,
+        mut texture: DecodedTexture,
+        source: Option<&FlipbookSource>,
+        available: usize,
+    ) -> Option<FrameStorage> {
         let frames = match source {
             Some(source) => flipbook_frames(&texture, source, available.min(256), MAX_TILE),
             None => {

@@ -464,6 +464,122 @@ fn matching_animation_frames_share_storage_at_capacity_with_separate_destination
 }
 
 #[test]
+fn relative_flipbook_paths_keep_animation_and_share_canonical_storage() {
+    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
+        .with_flipbook_destinations([("tile", [2])]);
+    let strip = png(16, 32, |_, y| {
+        if y < 16 {
+            [230, 10, 20, 255]
+        } else {
+            [20, 10, 230, 255]
+        }
+    });
+    let raster = png(16, 16, |_, _| [0, 180, 0, 255]);
+    let view = pack(&[
+        ("textures/static.png", &raster),
+        ("textures/strip.png", &strip),
+        ("textures/flipbook_textures.json", br#"[
+            {"atlas_tile":"tile","atlas_tile_variant":0,"flipbook_texture":" ././textures/strip ","frames":[1,0],"ticks_per_frame":4},
+            {"atlas_tile":"tile","atlas_tile_variant":1,"flipbook_texture":"textures/strip","frames":[1,0],"ticks_per_frame":6}
+        ]"#),
+    ]);
+    let compiled =
+        super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 3)
+            .unwrap();
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
+    assert_eq!(compiled.gaps.saturated_textures, 0);
+    assert_eq!(compiled.overlay.material_overrides.len(), 2);
+    let texture = compiled.overlay.material_overrides[0].texture;
+    for replacement in &compiled.overlay.material_overrides {
+        assert_eq!(replacement.texture, texture);
+        assert_ne!(replacement.animation, assets::NO_ANIMATION);
+        let animation = &compiled.overlay.animations[replacement.animation as usize];
+        assert_eq!(animation.frame_count, 2);
+        assert_eq!(
+            animation.ticks_per_frame,
+            if replacement.material == 1 { 4 } else { 6 }
+        );
+        assert_eq!(animation.atlas_tile_variant, replacement.material - 1);
+        let start = animation.frame_start as usize;
+        assert_eq!(
+            compiled.overlay.animation_frames[start..start + 2]
+                .iter()
+                .map(|&frame| pixel(&compiled.overlay, frame))
+                .collect::<Vec<_>>(),
+            [[20, 10, 230, 255], [230, 10, 20, 255]]
+        );
+    }
+}
+
+#[test]
+fn full_arrays_reuse_shared_frames_without_reading_uncached_image_payloads() {
+    let keys = assets::MaterialKeys::from_entries([
+        (1, "a_fill"),
+        (2, "a_fill"),
+        (3, "z_static"),
+        (4, "y_animated"),
+    ])
+    .with_aliases([
+        ("a_fill", "textures/strip"),
+        ("z_static", "textures/overflow_static"),
+        ("y_animated", "textures/overflow_fallback"),
+    ])
+    .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
+    .with_flipbook_destinations([
+        ("a_fill", vec![2]),
+        ("z_static", vec![1]),
+        ("y_animated", vec![1]),
+    ]);
+    let strip = png(16, 32, |_, y| {
+        if y < 16 {
+            [230, 10, 20, 255]
+        } else {
+            [20, 10, 230, 255]
+        }
+    });
+    let raster = png(16, 16, |_, _| [0, 180, 0, 255]);
+    let stack = pack(&[
+        ("textures/strip.png", &strip),
+        ("textures/overflow_static.png", &raster),
+        ("textures/overflow_animated.png", &strip),
+        ("textures/overflow_fallback.png", &raster),
+        (
+            "textures/flipbook_textures.json",
+            br#"[
+            {"atlas_tile":"a_fill","flipbook_texture":"textures/strip"},
+            {"atlas_tile":"y_animated","flipbook_texture":"textures/overflow_animated"}
+        ]"#,
+        ),
+    ]);
+    let view = LayeredPackView::tracked(stack.shared_stack());
+    let compiled =
+        super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 3)
+            .unwrap();
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
+    assert_eq!(compiled.gaps.saturated_textures, 2);
+    assert_eq!(compiled.overlay.material_overrides.len(), 2);
+    for (index, replacement) in compiled.overlay.material_overrides.iter().enumerate() {
+        assert_eq!(replacement.material, index as u32 + 1);
+        assert_ne!(replacement.animation, assets::NO_ANIMATION);
+        assert_eq!(
+            replacement.texture,
+            compiled.overlay.material_overrides[0].texture
+        );
+    }
+    let inputs = view.dependencies().unwrap().snapshot();
+    assert!(inputs.iter().any(|input| matches!(input,
+        resource_pack::PackDependency::File { path, limit }
+            if path == "textures/strip.png" && *limit == resource_pack::MAX_PACK_TEXTURE_BYTES
+    )));
+    assert!(!inputs.iter().any(|input| matches!(input,
+        resource_pack::PackDependency::File { path, limit }
+            if path.starts_with("textures/overflow_") && *limit == resource_pack::MAX_PACK_TEXTURE_BYTES
+    )), "overflow routes must not read image payloads after capacity is exhausted");
+}
+
+#[test]
 fn a_later_all_variant_description_overwrites_an_earlier_exact_destination() {
     let keys = assets::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/static")])

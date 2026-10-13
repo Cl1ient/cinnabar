@@ -101,9 +101,29 @@ const IMAGE_EXTENSIONS: [(&str, ImageFormat); 4] = [
 ];
 const MAX_TEXTURE_SET_BYTES: u64 = 64 * 1024;
 
+/// Removes the whitespace and relative prefix accepted by texture catalogs.
+pub fn normalize_texture_path(path: &str) -> &str {
+    path.trim().trim_start_matches("./")
+}
+
+/// Checks archive indices for raster or texture-set candidates without reading their bytes.
+pub fn has_texture_source(view: &LayeredPackView, path: &str) -> bool {
+    let path = normalize_texture_path(path);
+    let exists = |candidate: &str| {
+        view.layers()
+            .any(|layer| layer.file_size(candidate).is_some())
+    };
+    exists(path)
+        || IMAGE_EXTENSIONS
+            .into_iter()
+            .any(|(extension, _)| exists(&format!("{path}.{extension}")))
+        || exists(&format!("{path}.texture_set.json"))
+}
+
 /// Decodes the winning image at `path`, trying `.png`, `.tga`, and `.jpg` as
 /// vanilla does, then the color layer of a `.texture_set.json`.
 pub fn decode_pack_texture(view: &LayeredPackView, path: &str) -> Option<DecodedTexture> {
+    let path = normalize_texture_path(path);
     decode_image_file(view, path).or_else(|| decode_texture_set(view, path))
 }
 
@@ -140,7 +160,7 @@ fn decode_texture_set(view: &LayeredPackView, path: &str) -> Option<DecodedTextu
     let root = parse_pack_json(&bytes)?;
     match root.get("minecraft:texture_set")?.get("color")? {
         Value::String(name) => {
-            let name = name.trim().trim_start_matches("./");
+            let name = normalize_texture_path(name);
             let sibling = path
                 .rsplit_once('/')
                 .map_or_else(|| name.to_owned(), |(dir, _)| format!("{dir}/{name}"));
@@ -178,7 +198,7 @@ fn first_texture_path(value: &Value) -> Option<String> {
         Value::Array(entries) => return first_texture_path(entries.first()?),
         _ => return None,
     };
-    let path = path.trim().trim_start_matches("./");
+    let path = normalize_texture_path(path);
     (!path.is_empty()).then(|| path.to_owned())
 }
 

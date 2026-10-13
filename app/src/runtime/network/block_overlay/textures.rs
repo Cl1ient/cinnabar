@@ -10,7 +10,9 @@ mod diagnostics;
 mod terrain;
 mod tint;
 use diagnostics::{FailureReason, TextureDiagnostics};
-use pack_runtime::pack_textures::{decode_pack_texture, texture_key_paths};
+use pack_runtime::pack_textures::{
+    decode_pack_texture, has_texture_source, normalize_texture_path, texture_key_paths,
+};
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
 
 /// Texture keys resolved across the stack; a higher pack replaces a key.
@@ -125,7 +127,7 @@ impl<'a> TextureCatalog<'a> {
             None => self.terrain_path(key)?,
         };
         Some(TextureStorageKey {
-            path: path.into(),
+            path: normalize_texture_path(path).into(),
             grid: self.grid(key),
             tint: self.tints.get(key).copied(),
             frames: source.map(|source| (source.frames.clone(), source.replicate)),
@@ -147,8 +149,14 @@ impl<'a> TextureCatalog<'a> {
         Some(path)
     }
 
+    /// Checks source candidates by archive metadata without inflating or decoding them.
+    pub(super) fn has_source(&self, path: &str) -> bool {
+        has_texture_source(self.view, path)
+    }
+
     /// Decodes an independent animation source with the destination tile's atlas tint.
     pub(super) fn decode_path(&self, key: &str, path: &str) -> Option<DecodedTexture> {
+        let path = normalize_texture_path(path);
         let mut texture = decode_pack_texture(self.view, path);
         if let Some(tint) = self.tints.get(key)
             && let Some(texture) = texture.as_mut()

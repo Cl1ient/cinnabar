@@ -2,6 +2,7 @@
 
 use sha2::Digest;
 mod presentation;
+pub(super) mod selection;
 mod source;
 mod status;
 #[cfg(test)]
@@ -9,7 +10,7 @@ mod tests;
 
 use presentation::{clear_owned_state, clear_presentation, refresh_presentation};
 use source::{observe, source_snapshot};
-use status::{bounded_message, write_status};
+use status::{bounded_message, write_json};
 
 use std::{
     path::PathBuf,
@@ -843,7 +844,7 @@ fn worker(
             }) => {
                 if generation == latest.load(Ordering::Acquire) {
                     installed_identity = identity;
-                    if let Err(error) = write_status(&directory.join(STATUS_FILE), &status) {
+                    if let Err(error) = write_json(&directory.join(STATUS_FILE), &status) {
                         eprintln!("Local extension status could not be saved: {error}");
                     }
                 }

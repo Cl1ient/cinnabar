@@ -19,9 +19,10 @@ sends the client's stderr to `logs/client.log`, rotated to `client.log.1` per la
 | Linux AppImage | `make package-linux` | none |
 
 All release targets build with `--no-default-features` and `cinnabar/local-mods`, enabling
-the local module loader used by companion apps such as Cinnaroids while excluding the acceptance
-harness. Developer defaults stay enabled for `make play`, live testing, CI and client MCP. A local
-`cargo build --release` still includes acceptance; use `make package-binaries` for shipping.
+the local module loader used by Settings › Mods and companion apps such as Cinnaroids while
+excluding the acceptance harness. Developer defaults stay enabled for `make play`, live
+testing, CI and client MCP. A local `cargo build --release` still includes acceptance; use
+`make package-binaries` for shipping.
 
 `packaging/common/runtime-binaries.txt` owns the runtime executable list. Each row gives the
 basename, Cargo package (`-` for Go integrations), and Unix path override variable. Release

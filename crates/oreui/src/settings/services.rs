@@ -19,6 +19,7 @@ pub(super) fn draw(content: &mut Content<'_, '_>, section: &str) -> Result<bool,
         "language_forced_index" => language(content)?,
         "account_forced_index" => account(content)?,
         "global_texture_pack_forced_index" => resources(content)?,
+        launcher::mods::SECTION => super::mods::draw(content)?,
         "storage_management_forced_index" => storage(content)?,
         "view_subscriptions_forced_index" => subscriptions(content)?,
         "touch_forced_index" => {

@@ -181,6 +181,9 @@ pub struct MenuRuntime {
     store_actions: Vec<launcher::store::StoreAction>,
     pub global_resource_actions: Vec<launcher::global_resources::Action>,
     pub global_resources: std::sync::Arc<launcher::global_resources::Snapshot>,
+    /// Mods-tab work for the mod runtime; disclosure toggles apply in place.
+    pub mod_actions: Vec<launcher::mods::Action>,
+    pub mods: std::sync::Arc<launcher::mods::Snapshot>,
     /// The Marketplace's presented state while its screen is up.
     store_snapshot: Option<std::sync::Arc<launcher::store::snapshot::StoreSnapshot>>,
     settings_options: std::sync::Arc<launcher::menu::settings_options::SettingsOptions>,
@@ -779,6 +782,11 @@ impl MenuRuntime {
             MenuAction::ToggleReadMore(section) => self.feeds.toggle_read_more(section),
             MenuAction::OpenLiveEvent => self.open_live_event(),
             MenuAction::GlobalResources(action) => self.global_resource_actions.push(action),
+            MenuAction::Mods(action) => {
+                if let Some(work) = std::sync::Arc::make_mut(&mut self.mods).apply(action) {
+                    self.mod_actions.push(work);
+                }
+            }
             MenuAction::DressingRoom(action) => self.activate_dressing_room(action),
             MenuAction::Store(action) => {
                 if action == launcher::store::StoreAction::Open {

@@ -64,6 +64,7 @@ pub struct Transitions {
     pub(super) text: text::TextEdits,
     pub(super) progress: progress::ProgressTween,
     pub(super) resources: resources::Resources,
+    pub(super) mods: resources::Mods,
     pub(super) server_list: super::play_servers::drag::DragState,
 }
 
@@ -99,6 +100,7 @@ impl Transitions {
         self.motion.active(seconds)
             || self.effects.active(seconds)
             || self.resources.active(seconds)
+            || self.mods.active(seconds)
             || self.switches.values().any(|s| s.position.active(seconds))
             || self
                 .sliders
@@ -131,6 +133,7 @@ impl Transitions {
             self.text.clear();
             self.progress = Default::default();
             self.resources = Default::default();
+            self.mods = Default::default();
         }
         self.motion.configure(enabled);
         self.effects.configure(enabled);
@@ -368,6 +371,7 @@ impl Transitions {
         self.text.end_frame();
         self.progress.end_frame();
         self.resources.end_frame();
+        self.mods.end_frame();
         self.server_list.end_frame();
         if !std::mem::take(&mut self.play_drawn) {
             self.play_icon = None;

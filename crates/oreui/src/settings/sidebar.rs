@@ -13,31 +13,175 @@ use ui::IconRef;
 use ui_engine::engine::screen::PaintError;
 use ui_engine::engine::screen::Translate;
 
-const TABS: [(&str, &str); 14] = [
-    ("accessibility_forced_index", "menu.accessibility.tab.title"),
-    (
-        "keyboard_and_mouse_forced_index",
-        "menu.keyboardAndMouse.tab.title",
+/// One sidebar category; installed `art` is drawn when present, else the pixel `fill` and
+/// `glyph`.
+struct Tab {
+    section: &'static str,
+    title: &'static str,
+    /// The group heading drawn above this category.
+    group: Option<&'static str>,
+    art: Option<&'static str>,
+    fill: [u8; 4],
+    glyph: Glyph,
+}
+
+#[derive(Clone, Copy)]
+enum Glyph {
+    Grid,
+    Person,
+    Mouse,
+    Gamepad,
+    Landscape,
+    Face,
+    Banner,
+    Chest,
+    Shelves,
+    Puzzle,
+}
+
+const fn tab(
+    section: &'static str,
+    title: &'static str,
+    art: Option<&'static str>,
+    fill: [u8; 3],
+    glyph: Glyph,
+) -> Tab {
+    Tab {
+        section,
+        title,
+        group: None,
+        art,
+        fill: [fill[0], fill[1], fill[2], 255],
+        glyph,
+    }
+}
+
+const fn grouped(group: &'static str, tab: Tab) -> Tab {
+    Tab {
+        group: Some(group),
+        ..tab
+    }
+}
+
+const TABS: [Tab; 15] = [
+    tab(
+        "accessibility_forced_index",
+        "menu.accessibility.tab.title",
+        Some(SETTINGS_ICONS[0]),
+        [65, 99, 216],
+        Glyph::Person,
     ),
-    (
+    grouped(
+        "options.group.input",
+        tab(
+            "keyboard_and_mouse_forced_index",
+            "menu.keyboardAndMouse.tab.title",
+            Some(SETTINGS_ICONS[1]),
+            [147, 145, 132],
+            Glyph::Mouse,
+        ),
+    ),
+    tab(
         "controller_and_switch_forced_index",
         "menu.controller.tab.title",
+        Some(SETTINGS_ICONS[2]),
+        [147, 145, 132],
+        Glyph::Gamepad,
     ),
-    ("touch_forced_index", "menu.touch.tab.title"),
-    ("party_forced_index", "options.party"),
-    ("general_forced_index", "menu.general.tab.title"),
-    ("video_forced_index", "menu.video.tab.title"),
-    ("sound_forced_index", "menu.audio.tab.title"),
-    ("account_forced_index", "menu.account.tab.title"),
-    (
+    tab(
+        "touch_forced_index",
+        "menu.touch.tab.title",
+        Some(SETTINGS_ICONS[3]),
+        [147, 145, 132],
+        Glyph::Grid,
+    ),
+    grouped(
+        "options.social",
+        tab(
+            "party_forced_index",
+            "options.party",
+            Some(SETTINGS_ICONS[4]),
+            [158, 101, 64],
+            Glyph::Grid,
+        ),
+    ),
+    grouped(
+        "options.general",
+        tab(
+            "general_forced_index",
+            "menu.general.tab.title",
+            Some(SETTINGS_ICONS[5]),
+            [152, 100, 50],
+            Glyph::Grid,
+        ),
+    ),
+    tab(
+        "video_forced_index",
+        "menu.video.tab.title",
+        Some(SETTINGS_ICONS[6]),
+        [193, 142, 62],
+        Glyph::Landscape,
+    ),
+    tab(
+        "sound_forced_index",
+        "menu.audio.tab.title",
+        Some(SETTINGS_ICONS[7]),
+        [141, 90, 59],
+        Glyph::Grid,
+    ),
+    tab(
+        ACCOUNT,
+        "menu.account.tab.title",
+        Some(SETTINGS_ICONS[8]),
+        [121, 76, 45],
+        Glyph::Face,
+    ),
+    tab(
         "view_subscriptions_forced_index",
         "options.viewSubscriptions",
+        Some(SETTINGS_ICONS[9]),
+        [151, 116, 27],
+        Glyph::Banner,
     ),
-    ("global_texture_pack_forced_index", "menu.globalpacks"),
-    ("storage_management_forced_index", "menu.storage.tab.title"),
-    ("language_forced_index", "menu.language.tab.title"),
-    ("creator_forced_index", "menu.creator.tab.title"),
+    tab(
+        "global_texture_pack_forced_index",
+        "menu.globalpacks",
+        Some(SETTINGS_ICONS[10]),
+        [159, 108, 44],
+        Glyph::Chest,
+    ),
+    tab(
+        launcher::mods::SECTION,
+        "Mods",
+        None,
+        [112, 76, 160],
+        Glyph::Puzzle,
+    ),
+    tab(
+        "storage_management_forced_index",
+        "menu.storage.tab.title",
+        Some(SETTINGS_ICONS[11]),
+        [141, 126, 73],
+        Glyph::Shelves,
+    ),
+    tab(
+        "language_forced_index",
+        "menu.language.tab.title",
+        Some(SETTINGS_ICONS[12]),
+        [55, 110, 187],
+        Glyph::Grid,
+    ),
+    tab(
+        "creator_forced_index",
+        "menu.creator.tab.title",
+        Some(SETTINGS_ICONS[13]),
+        [159, 105, 65],
+        Glyph::Grid,
+    ),
 ];
+
+/// The category whose icon is the signed-in player's gamerpic.
+const ACCOUNT: &str = "account_forced_index";
 
 #[cfg(test)]
 mod tests;
@@ -63,7 +207,7 @@ pub(super) fn draw(
     )?;
     canvas.focus_delegate(
         Some(MenuAction::SettingsSection(if view.settings_section == 0 {
-            section_index(TABS[0].0)
+            section_index(TABS[0].section)
         } else {
             view.settings_section
         })),
@@ -73,7 +217,7 @@ pub(super) fn draw(
     let width = (right - viewport[0] - canvas.r(6.4)).max(1.0);
     let labels: Vec<_> = TABS
         .iter()
-        .map(|(_, key)| {
+        .map(|Tab { title: key, .. }| {
             translate(key).map_or_else(
                 || sections::fallback(key).to_owned(),
                 |text| text.to_string(),
@@ -97,14 +241,9 @@ pub(super) fn draw(
     let scroll = canvas.begin_scroll(key, viewport)?;
     let mut y = viewport[1] + canvas.r(1.6) - scroll.offset;
     let mut focused_outline = None;
-    for (index, ((selector, _), label)) in TABS.iter().zip(&labels).enumerate() {
-        let group = match index {
-            1 => Some("options.group.input"),
-            4 => Some("options.social"),
-            5 => Some("options.general"),
-            _ => None,
-        };
-        if let Some(group) = group {
+    for (index, (tab, label)) in TABS.iter().zip(&labels).enumerate() {
+        let selector = tab.section;
+        if let Some(group) = tab.group {
             let text = translate(group).map_or_else(
                 || sections::fallback(group).to_owned(),
                 |text| text.to_string(),
@@ -126,8 +265,8 @@ pub(super) fn draw(
         let side = super::super::icons::native_side(canvas);
         let at = [row[0] + canvas.r(1.6), (row[1] + row[3] - side) * 0.5];
         let icon_bounds = [at[0], at[1], at[0] + side, at[1] + side];
-        if index != 8 || !super::account_icon::draw(canvas, view, icon_bounds, gamerpic)? {
-            icon(canvas, index, at)?;
+        if selector != ACCOUNT || !super::account_icon::draw(canvas, view, icon_bounds, gamerpic)? {
+            icon(canvas, tab, at)?;
         }
         if let Some(frame) = canvas
             .transitions
@@ -191,10 +330,12 @@ fn group_label(
     Ok(bottom + edge)
 }
 
-fn icon(canvas: &mut Canvas<'_>, index: usize, at: [f32; 2]) -> Result<(), PaintError> {
+fn icon(canvas: &mut Canvas<'_>, tab: &Tab, at: [f32; 2]) -> Result<(), PaintError> {
     let side = super::super::icons::native_side(canvas);
     let b = [at[0], at[1], at[0] + side, at[1] + side];
-    if canvas.sprite(SETTINGS_ICONS[index], b, [255; 4])? {
+    if let Some(art) = tab.art
+        && canvas.sprite(art, b, [255; 4])?
+    {
         return Ok(());
     }
     let pixel = side / 16.0;
@@ -210,37 +351,21 @@ fn icon(canvas: &mut Canvas<'_>, index: usize, at: [f32; 2]) -> Result<(), Paint
         )
     };
     block(0.0, 0.0, 16.0, 16.0, theme::BORDER)?;
-    let colors = [
-        [65, 99, 216, 255],
-        [147, 145, 132, 255],
-        [147, 145, 132, 255],
-        [147, 145, 132, 255],
-        [158, 101, 64, 255],
-        [152, 100, 50, 255],
-        [193, 142, 62, 255],
-        [141, 90, 59, 255],
-        [121, 76, 45, 255],
-        [151, 116, 27, 255],
-        [159, 108, 44, 255],
-        [141, 126, 73, 255],
-        [55, 110, 187, 255],
-        [159, 105, 65, 255],
-    ];
-    block(1.0, 1.0, 14.0, 14.0, colors[index])?;
-    match index {
-        0 => {
+    block(1.0, 1.0, 14.0, 14.0, tab.fill)?;
+    match tab.glyph {
+        Glyph::Person => {
             block(5.0, 2.0, 6.0, 5.0, TEXT)?;
             block(3.0, 8.0, 10.0, 2.0, TEXT)?;
             block(7.0, 8.0, 2.0, 6.0, TEXT)?;
             block(4.0, 11.0, 2.0, 3.0, TEXT)?;
             block(10.0, 11.0, 2.0, 3.0, TEXT)?;
         }
-        1 => {
+        Glyph::Mouse => {
             block(5.0, 2.0, 6.0, 12.0, theme::BORDER)?;
             block(6.0, 3.0, 4.0, 8.0, [208, 209, 212, 255])?;
-            block(7.0, 3.0, 2.0, 3.0, colors[index])?;
+            block(7.0, 3.0, 2.0, 3.0, tab.fill)?;
         }
-        2 => {
+        Glyph::Gamepad => {
             block(3.0, 4.0, 10.0, 8.0, theme::BORDER)?;
             block(4.0, 5.0, 8.0, 6.0, [178, 175, 160, 255])?;
             block(5.0, 6.0, 1.0, 3.0, theme::BORDER)?;
@@ -248,13 +373,13 @@ fn icon(canvas: &mut Canvas<'_>, index: usize, at: [f32; 2]) -> Result<(), Paint
             block(10.0, 6.0, 1.0, 1.0, theme::BORDER)?;
             block(11.0, 8.0, 1.0, 1.0, theme::BORDER)?;
         }
-        6 => {
+        Glyph::Landscape => {
             block(2.0, 2.0, 12.0, 11.0, [99, 169, 218, 255])?;
             block(3.0, 3.0, 4.0, 4.0, [255, 230, 122, 255])?;
             block(3.0, 10.0, 10.0, 3.0, [97, 141, 64, 255])?;
             block(7.0, 7.0, 3.0, 5.0, [97, 141, 64, 255])?;
         }
-        8 => {
+        Glyph::Face => {
             block(3.0, 2.0, 10.0, 5.0, [64, 44, 35, 255])?;
             block(3.0, 7.0, 10.0, 7.0, [178, 129, 94, 255])?;
             block(4.0, 8.0, 3.0, 2.0, TEXT)?;
@@ -263,20 +388,25 @@ fn icon(canvas: &mut Canvas<'_>, index: usize, at: [f32; 2]) -> Result<(), Paint
             block(10.0, 8.0, 1.0, 2.0, [63, 90, 174, 255])?;
             block(5.0, 12.0, 6.0, 2.0, [74, 45, 30, 255])?;
         }
-        9 => {
+        Glyph::Banner => {
             block(2.0, 4.0, 12.0, 3.0, [159, 46, 34, 255])?;
             block(2.0, 9.0, 12.0, 2.0, [218, 182, 59, 255])?;
         }
-        10 => {
+        Glyph::Chest => {
             block(2.0, 7.0, 12.0, 2.0, theme::BORDER)?;
             block(7.0, 6.0, 2.0, 5.0, [216, 208, 177, 255])?;
         }
-        11 => {
+        Glyph::Shelves => {
             for row in [3.0, 7.0, 11.0] {
                 block(2.0, row, 12.0, 2.0, [185, 166, 98, 255])?;
             }
         }
-        _ => {
+        Glyph::Puzzle => {
+            block(3.0, 5.0, 8.0, 8.0, TEXT)?;
+            block(6.0, 3.0, 2.0, 2.0, TEXT)?;
+            block(11.0, 8.0, 2.0, 2.0, TEXT)?;
+        }
+        Glyph::Grid => {
             for row in 0..3 {
                 for column in 0..3 {
                     block(

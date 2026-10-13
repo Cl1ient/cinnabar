@@ -1,9 +1,9 @@
 //! Bounded extension status messages and atomic file publication.
 
-use super::Status;
+use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::Path,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -23,9 +23,9 @@ pub(super) fn bounded_message(message: &str) -> String {
     output
 }
 
-/// Replaces a status file atomically after flushing its complete serialized contents.
-pub(super) fn write_status(path: &Path, status: &Status) -> std::io::Result<()> {
-    let bytes = serde_json::to_vec(status)?;
+/// Replaces a JSON file atomically after flushing its complete serialized contents.
+pub(super) fn write_json(path: &Path, value: &impl Serialize) -> std::io::Result<()> {
+    let bytes = serde_json::to_vec(value)?;
     let parent = path
         .parent()
         .ok_or_else(|| std::io::Error::other("status directory unavailable"))?;
@@ -44,4 +44,24 @@ pub(super) fn write_status(path: &Path, status: &Status) -> std::io::Result<()> 
     })();
     let _ = fs::remove_file(temporary);
     result
+}
+
+/// The fields of a written status that the Settings Mods tab shows.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub(super) struct Recorded {
+    pub(super) request_id: String,
+    pub(super) state: String,
+    #[serde(default)]
+    pub(super) message: Option<String>,
+}
+
+/// Reads the last status the watcher wrote; absent or unreadable files record nothing.
+pub(super) fn read_status(path: &Path) -> Option<Recorded> {
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .ok()?
+        .take(super::MAX_BYTES as u64)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    serde_json::from_slice(&bytes).ok()
 }

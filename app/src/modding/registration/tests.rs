@@ -657,8 +657,8 @@ fn acknowledgment_status_is_bounded_and_replaces_only_fixed_companion() {
     assert!(status.message.as_ref().unwrap().len() <= MAX_MESSAGE_BYTES);
     assert!(!status.message.as_ref().unwrap().contains('\n'));
     let path = directory.0.join(STATUS_FILE);
-    write_status(&path, &status).unwrap();
-    write_status(&path, &Status::new("second".into(), "disabled", None)).unwrap();
+    write_json(&path, &status).unwrap();
+    write_json(&path, &Status::new("second".into(), "disabled", None)).unwrap();
     let json: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
     assert_eq!(json["request_id"], "second");
     assert_eq!(json["state"], "disabled");

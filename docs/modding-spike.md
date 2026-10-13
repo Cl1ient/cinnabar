@@ -508,6 +508,11 @@ only successful compilation. The guest still has no filesystem or process access
 This loader cannot be added to an executable that is already running without it;
 older clients require one update and restart.
 
+Settings › Mods drives this registration. **Import mod…** validates a `.wasm` component without
+running it and copies it into `InstallLayout::mods_dir`. Enabling a mod points the registration at
+it, so one registered mod runs at a time; grants, font and UI carry over only while the component
+stays the same. Builds without `local-mods` show the tab with import disabled.
+
 ## Verification and limits
 
 ```sh

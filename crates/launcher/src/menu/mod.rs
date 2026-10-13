@@ -177,6 +177,8 @@ pub enum MenuAction {
     /// A press on a Marketplace screen.
     Store(crate::store::StoreAction),
     GlobalResources(crate::global_resources::Action),
+    /// A press on the Settings Mods tab.
+    Mods(crate::mods::Action),
     DressingRoom(crate::dressing_room::Action),
     /// Answers the join's server trust prompt: "Trust and Join" (true) or "Don't Trust".
     ServerTrust(bool),

@@ -120,7 +120,7 @@ fn run(
             Command::Action {
                 action: Action::Import,
                 ..
-            } => match super::picker::pick() {
+            } => match super::picker::pick(&super::picker::PACKS) {
                 Ok(Some(path)) => import(&mut library, path, &mut snapshot, &icon_root),
                 Ok(None) => {
                     snapshot.message.clear();

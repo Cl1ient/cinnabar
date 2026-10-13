@@ -38,6 +38,8 @@ const RELOAD_INTERVAL: Duration = Duration::from_millis(500);
 #[cfg(feature = "local-mods")]
 mod hud_editor;
 #[cfg(feature = "local-mods")]
+mod library;
+#[cfg(feature = "local-mods")]
 mod registration;
 
 /// Every loaded mod's presentation cues committed this frame, in load order.
@@ -115,10 +117,12 @@ pub(crate) fn configure_from_environment(app: &mut App) {
     #[cfg(feature = "local-mods")]
     {
         let configured = app.world().contains_resource::<ModRuntime>();
-        match launcher::install_layout::InstallLayout::discover()
-            .map_err(|error| error.to_string())
-            .and_then(|layout| registration::Watcher::start(layout.user_config_root))
-        {
+        let layout =
+            launcher::install_layout::InstallLayout::discover().map_err(|error| error.to_string());
+        if let Ok(layout) = &layout {
+            library::configure(app, layout.mods_dir(), layout.user_config_root.clone());
+        }
+        match layout.and_then(|layout| registration::Watcher::start(layout.user_config_root)) {
             Ok(watcher) => {
                 app.insert_resource(watcher);
                 if configured {

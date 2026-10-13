@@ -2646,6 +2646,14 @@ gaps: no smelting at 1.26.x, brewing skipped, recipes with Molang/complex/deferr
 ingredients dropped. Incomplete as for the spike: process isolation, signing,
 consent, per-mod overlays, rebinding UI. See `docs/modding-spike.md`.
 
+2026-10-13 modding Settings tab: Cinnabar extension, not vanilla behavior; it closes no
+parity gate. Settings › Mods, below Resource packs, imports `.wasm` components (validated
+without running guest code) into the per-user mods directory and drives the one local
+registration, so at most one mod is enabled; a newly selected component starts with
+default-denied grants. Release packages build with `local-mods`. Incomplete: icons and
+descriptions (bare components carry no manifest), grant UI and multi-mod registration. See
+`docs/modding-spike.md`.
+
 2026-10-01 crouch, shield and crossbow follow-up: the local camera now consumes
 the native 0.35-block crouch offset, half-blended once per completed tick and
 interpolated per frame. Local actor feet, interaction eye and network anchor are

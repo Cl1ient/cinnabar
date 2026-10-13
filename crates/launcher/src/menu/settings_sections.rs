@@ -1,6 +1,6 @@
 //! The settings screen's section selector variables.
 
-/// Settings selector index vars as 1.26.50's settings screen assigns them.
+/// Settings selector index vars as 1.26.50's settings screen assigns them, then Cinnabar's own.
 pub const SETTINGS_SECTIONS: &[(&str, u8)] = &[
     ("server_forced_index", 1),
     ("accessibility_forced_index", 2),
@@ -48,4 +48,5 @@ pub const SETTINGS_SECTIONS: &[(&str, u8)] = &[
     ("general_invite_link_forced_index", 41),
     ("advanced_invite_link_forced_index", 42),
     ("realms_advanced_forced_index", 43),
+    (crate::mods::SECTION, 44),
 ];

@@ -156,6 +156,8 @@ impl MenuRuntime {
             store_actions: Vec::new(),
             global_resource_actions: Vec::new(),
             global_resources: initial.global_resources,
+            mod_actions: Vec::new(),
+            mods: initial.mods,
             store_snapshot: initial.store,
             settings_options: std::sync::Arc::new(settings_options),
             storage: initial.storage,

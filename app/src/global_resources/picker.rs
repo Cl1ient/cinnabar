@@ -1,31 +1,49 @@
-//! The import button opens the platform file picker on the import worker.
+//! Import buttons open the platform file picker on their import worker.
 use resource_pack::PACK_IMPORT_EXTENSIONS;
 use std::path::PathBuf;
 #[cfg(any(not(windows), test))]
 use std::process::Command;
 
-const TITLE: &str = "Import resource pack";
-const FILTER_NAME: &str = "Resource packs";
-const UNAVAILABLE_HINT: &str = "Drop a pack onto the window to import it.";
+/// What one import dialog asks for.
+pub(crate) struct Filter {
+    pub(crate) title: &'static str,
+    pub(crate) name: &'static str,
+    pub(crate) extensions: &'static [&'static str],
+    /// Appended to errors when no picker opens.
+    pub(crate) unavailable_hint: &'static str,
+}
+
+pub(super) const PACKS: Filter = Filter {
+    title: "Import resource pack",
+    name: "Resource packs",
+    extensions: &PACK_IMPORT_EXTENSIONS,
+    unavailable_hint: "Drop a pack onto the window to import it.",
+};
 
 /// Returns a selected filename, cancellation, or a visible picker error.
-pub(super) fn pick() -> Result<Option<PathBuf>, String> {
+pub(crate) fn pick(filter: &Filter) -> Result<Option<PathBuf>, String> {
     #[cfg(windows)]
-    return launcher_host::desktop::windows::pick_file(TITLE, &windows_filter())
-        .map_err(|code| format!("File picker failed (error {code:#x}). {UNAVAILABLE_HINT}"));
+    return launcher_host::desktop::windows::pick_file(filter.title, &windows_filter(filter))
+        .map_err(|code| {
+            format!(
+                "File picker failed (error {code:#x}). {}",
+                filter.unavailable_hint
+            )
+        });
     #[cfg(target_os = "linux")]
-    match launcher_host::desktop::dbus::pick_file(TITLE, FILTER_NAME, &patterns()) {
+    match launcher_host::desktop::dbus::pick_file(filter.title, filter.name, &patterns(filter)) {
         Ok(choice) => return Ok(choice),
         Err(error) => {
             bevy::log::debug!("portal file chooser unavailable ({error}); trying dialog tools")
         }
     }
     #[cfg(not(windows))]
-    run_tools(tool_commands(std::env::consts::OS))
+    run_tools(tool_commands(std::env::consts::OS, filter), filter)
 }
 
-fn patterns() -> Vec<String> {
-    PACK_IMPORT_EXTENSIONS
+fn patterns(filter: &Filter) -> Vec<String> {
+    filter
+        .extensions
         .iter()
         .map(|extension| format!("*.{extension}"))
         .collect()
@@ -33,13 +51,13 @@ fn patterns() -> Vec<String> {
 
 /// The Open dialog's filter: `name\0pattern;pattern\0\0`.
 #[cfg(any(windows, test))]
-fn windows_filter() -> String {
-    format!("{FILTER_NAME}\0{}\0\0", patterns().join(";"))
+fn windows_filter(filter: &Filter) -> String {
+    format!("{}\0{}\0\0", filter.name, patterns(filter).join(";"))
 }
 
 /// Runs the first picker tool that launches; a launched tool's failure counts as cancellation.
 #[cfg(not(windows))]
-fn run_tools(commands: Vec<Command>) -> Result<Option<PathBuf>, String> {
+fn run_tools(commands: Vec<Command>, filter: &Filter) -> Result<Option<PathBuf>, String> {
     let mut launch_error = None;
     for mut command in commands {
         match command.output() {
@@ -53,37 +71,42 @@ fn run_tools(commands: Vec<Command>) -> Result<Option<PathBuf>, String> {
     }
     let reason = launch_error.map_or_else(|| "no picker".to_owned(), |error| error.to_string());
     Err(format!(
-        "File picker unavailable: {reason}. {UNAVAILABLE_HINT}"
+        "File picker unavailable: {reason}. {}",
+        filter.unavailable_hint
     ))
 }
 
 /// Picker tools in fallback order; Linux reaches these only when the portal is unavailable.
 #[cfg(any(not(windows), test))]
-fn tool_commands(platform: &str) -> Vec<Command> {
+fn tool_commands(platform: &str, filter: &Filter) -> Vec<Command> {
+    let title = filter.title;
     if platform == "macos" {
-        let types = PACK_IMPORT_EXTENSIONS
+        let types = filter
+            .extensions
+            .iter()
             .map(|extension| format!("\"{extension}\""))
+            .collect::<Vec<_>>()
             .join(", ");
         let script =
-            format!("POSIX path of (choose file with prompt \"{TITLE}\" of type {{{types}}})");
+            format!("POSIX path of (choose file with prompt \"{title}\" of type {{{types}}})");
         let mut command = Command::new("osascript");
         command.args(["-e", &script]);
         return vec![command];
     }
-    let patterns = patterns().join(" ");
+    let (name, patterns) = (filter.name, patterns(filter).join(" "));
     let mut zenity = Command::new("zenity");
     zenity.args([
         "--file-selection".to_owned(),
-        format!("--title={TITLE}"),
-        format!("--file-filter={FILTER_NAME} | {patterns}"),
+        format!("--title={title}"),
+        format!("--file-filter={name} | {patterns}"),
     ]);
     let mut kdialog = Command::new("kdialog");
     kdialog.args([
         "--title".to_owned(),
-        TITLE.to_owned(),
+        title.to_owned(),
         "--getopenfilename".to_owned(),
         ".".to_owned(),
-        format!("{patterns}|{FILTER_NAME}"),
+        format!("{patterns}|{name}"),
     ]);
     vec![zenity, kdialog]
 }
@@ -101,7 +124,7 @@ mod tests {
 
     #[test]
     fn macos_picker_filters_pack_archives() {
-        let commands = tool_commands("macos");
+        let commands = tool_commands("macos", &PACKS);
         let args = args(&commands[0]);
         let script = args[1];
         let (_, types) = script
@@ -120,7 +143,7 @@ mod tests {
 
     #[test]
     fn linux_fallbacks_try_zenity_then_kdialog_with_the_pack_filter() {
-        let commands = tool_commands("linux");
+        let commands = tool_commands("linux", &PACKS);
         let programs = commands
             .iter()
             .map(|command| command.get_program().to_str().unwrap())
@@ -136,10 +159,10 @@ mod tests {
 
     #[test]
     fn windows_filter_lists_every_pack_pattern_and_ends_with_double_nul() {
-        let filter = windows_filter();
+        let filter = windows_filter(&PACKS);
         assert!(filter.ends_with("\0\0"));
         let mut parts = filter.trim_end_matches('\0').split('\0');
-        assert_eq!(parts.next(), Some(FILTER_NAME));
+        assert_eq!(parts.next(), Some(PACKS.name));
         let patterns = parts.next().unwrap().split(';').collect::<Vec<_>>();
         assert_eq!(patterns.len(), PACK_IMPORT_EXTENSIONS.len());
         assert_eq!(parts.next(), None);
@@ -155,14 +178,14 @@ mod tests {
         };
         let missing = || Command::new("cinnabar-no-such-picker");
         assert_eq!(
-            run_tools(vec![missing(), shell("echo /packs/a.mcpack")]),
+            run_tools(vec![missing(), shell("echo /packs/a.mcpack")], &PACKS),
             Ok(Some(PathBuf::from("/packs/a.mcpack")))
         );
         assert_eq!(
-            run_tools(vec![shell("exit 1"), shell("echo /packs/b.mcpack")]),
+            run_tools(vec![shell("exit 1"), shell("echo /packs/b.mcpack")], &PACKS),
             Ok(None)
         );
-        let error = run_tools(vec![missing()]).unwrap_err();
-        assert!(error.contains(UNAVAILABLE_HINT), "{error}");
+        let error = run_tools(vec![missing()], &PACKS).unwrap_err();
+        assert!(error.contains(PACKS.unavailable_hint), "{error}");
     }
 }

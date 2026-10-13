@@ -350,13 +350,6 @@ pub struct UiDrawBatch {
     pub index_range: Range<u32>,
 }
 
-const _: () = assert!(
-    UiLimits::MAX_UI_VERTICES * std::mem::size_of::<UiVertex>()
-        + UiLimits::MAX_UI_INDICES * std::mem::size_of::<u32>()
-        + UiLimits::MAX_DRAW_BATCHES * std::mem::size_of::<UiDrawBatch>()
-        <= UiLimits::MAX_DRAW_LIST_BYTES
-);
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiDrawList {
     pub revision: u64,

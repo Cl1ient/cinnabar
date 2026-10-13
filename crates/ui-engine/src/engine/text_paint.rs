@@ -14,20 +14,31 @@ use ui::{
 use super::{Canvas, rect, screen::PaintError, tooltip::TEXT_PITCH};
 use crate::text_metrics::TextMetrics;
 
+#[cfg(test)]
+mod tests;
+
 /// Largest wrap width handed to the text layout (logical px), for "no wrap".
 pub const UNWRAPPED_LOGICAL: f64 = 65_536.0;
 
 /// Default bitmap labels use the font's native wrap height, independently of chat's pitch.
-/// Attached named fonts keep their existing metrics instead of inheriting bitmap geometry.
-fn label_metrics(
+/// Pack substitutes use their outline baseline and normalize raster resolution to design units.
+fn label_metrics<'a>(
     mut metrics: TextMetrics,
-    default: &RuntimeFontCatalog,
-    selected: &RuntimeFontCatalog,
-) -> TextMetrics {
+    default: &'a RuntimeFontCatalog,
+    name: &str,
+) -> (TextMetrics, &'a RuntimeFontCatalog) {
+    let (selected, factor) = default.font_named_for_json_ui(name);
     if std::ptr::eq(default, selected) {
         metrics.line_height_64 = TEXT_PITCH * FONT_DESIGN_PIXEL_TEXELS * 64;
+    } else if let Some(factor) = factor
+        && let Some(outline) = selected.line_metrics()
+        && let Ok(scale) = UiScale::new_display(metrics.scale.get() * factor)
+    {
+        metrics.scale = scale;
+        metrics.line_height_64 = outline.ascent_64 + outline.descent_64;
+        metrics.baseline_64 = outline.ascent_64;
     }
-    metrics
+    (metrics, selected)
 }
 
 /// Native bitmap UI text starts one GUI pixel below the authored label top. The inset is
@@ -126,7 +137,7 @@ impl Measure<'_, '_> {
         text: &str,
         max_width: Option<f64>,
         shape: LabelShape,
-        font: &RuntimeFontCatalog,
+        name: &str,
     ) -> [f64; 2] {
         if text.is_empty() {
             return [0.0, 0.0];
@@ -135,7 +146,7 @@ impl Measure<'_, '_> {
         let width = max_width
             .filter(|width| *width > 0.0)
             .map_or(UNWRAPPED_LOGICAL, |width| width * px);
-        let metrics = label_metrics(self.metrics, self.font, font);
+        let (metrics, font) = label_metrics(self.metrics, self.font, name);
         let request = label_request(&metrics, text, width, font, shape, self.px);
         match self.layouts.borrow_mut().layout(request) {
             Ok(layout) => layout.size_64().map(|size| f64::from(size) / 64.0 / px),
@@ -178,7 +189,7 @@ impl TextMeasure for Measure<'_, '_> {
     }
 
     fn label(&self, text: &str, max_width: Option<f64>, shape: LabelShape) -> [f64; 2] {
-        self.font_label(text, max_width, shape, self.font)
+        self.font_label(text, max_width, shape, "default")
     }
 
     /// Keeps label shaping while selecting the pack's named font.
@@ -189,7 +200,7 @@ impl TextMeasure for Measure<'_, '_> {
         width: Option<f64>,
         shape: LabelShape,
     ) -> [f64; 2] {
-        self.font_label(text, width, shape, self.font.font_named(font))
+        self.font_label(text, width, shape, font)
     }
 
     fn localize<'t>(&self, text: &'t str) -> Cow<'t, str> {
@@ -214,8 +225,8 @@ pub fn painted_label_request<'a>(
         line_padding: f64::from(options.line_padding),
         hide_hyphen: options.hide_hyphen,
     };
-    let selected = font.font_named(options.font_type.as_deref().unwrap_or("default"));
-    let label_metrics = label_metrics(metrics, font, selected);
+    let name = options.font_type.as_deref().unwrap_or("default");
+    let (label_metrics, selected) = label_metrics(metrics, font, name);
     let mut request = label_request(
         &label_metrics,
         text,

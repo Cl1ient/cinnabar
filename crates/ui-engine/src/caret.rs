@@ -64,14 +64,14 @@ impl<F> TextSpot<F> {
         if text.is_empty() {
             return 0.0;
         }
-        let font = self
-            .font
-            .as_deref()
-            .map_or(font, |name| font.font_named(name));
+        let (font, design_scale) =
+            font.font_named_for_json_ui(self.font.as_deref().unwrap_or("default"));
         let mut request = self
             .metrics
             .request(text, width_64(UNWRAPPED_LOGICAL), font);
-        if let Ok(scale) = UiScale::new_display(self.metrics.scale.get() * self.factor) {
+        if let Ok(scale) = UiScale::new_display(
+            self.metrics.scale.get() * design_scale.unwrap_or(1.0) * self.factor,
+        ) {
             request.scale = scale;
         }
         request.wrap.letter_spacing_64 = self.letter_spacing_64;

@@ -11,7 +11,7 @@ use gpu_snapshot::{Draw, Gpu};
 use render_model::ActorGpuInstance;
 use render_model::{ActorRigVertex, EntityRigId};
 
-pub(super) fn cube(size: [u32; 3], top: bool, bottom: bool) -> Vec<ActorRigVertex> {
+pub(crate) fn cube(size: [u32; 3], top: bool, bottom: bool) -> Vec<ActorRigVertex> {
     let face = |u| serde_json::json!({"uv":[u,0],"uv_size":[1,1]});
     let mut uv = serde_json::Map::new();
     if top {
@@ -41,7 +41,7 @@ pub(super) fn cube(size: [u32; 3], top: bool, bottom: bool) -> Vec<ActorRigVerte
         .to_vec()
 }
 
-pub(super) fn source(gamma: bool) -> String {
+pub(crate) fn source(gamma: bool) -> String {
     let actor = include_str!("../../../src/actor.wesl")
         .replace(
             "ACTOR_GPU_INSTANCE_WORDS",
@@ -56,7 +56,7 @@ pub(super) fn source(gamma: bool) -> String {
         .replace("@group(1) @binding(1)", "@group(0) @binding(21)")
 }
 
-pub(super) fn raster(
+pub(crate) fn raster(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
     material: EntityRenderMaterial,
@@ -75,7 +75,7 @@ pub(super) fn raster(
     )
 }
 
-pub(super) fn raster_material(
+pub(crate) fn raster_material(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
     material: render_model::ActorMaterial,
@@ -85,7 +85,7 @@ pub(super) fn raster_material(
     raster_material_target(gpu, vertices, material, below, texels, false, false)
 }
 
-pub(super) fn raster_material_target(
+pub(crate) fn raster_material_target(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
     material: render_model::ActorMaterial,
@@ -110,7 +110,7 @@ pub(super) fn raster_material_target(
     clippy::too_many_arguments,
     reason = "each knob is an independent shader input under test"
 )]
-pub(super) fn raster_material_lighting(
+pub(crate) fn raster_material_lighting(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
     material: render_model::ActorMaterial,
@@ -130,7 +130,7 @@ pub(super) fn raster_material_lighting(
     clippy::too_many_arguments,
     reason = "each knob is an independent shader input under test"
 )]
-pub(super) fn raster_material_with_overlay(
+pub(crate) fn raster_material_with_overlay(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
     material: render_model::ActorMaterial,

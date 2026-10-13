@@ -153,6 +153,7 @@ fn geometry_document(motive: PaintingMotive, border: bool, identifier: &str) -> 
 
 #[cfg(test)]
 mod tests {
+    use sha2::{Digest, Sha256};
     use std::collections::BTreeSet;
 
     /// Encodes original artwork with a distinct colour for every logical atlas region.

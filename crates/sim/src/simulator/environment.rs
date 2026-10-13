@@ -75,6 +75,7 @@ pub(super) fn sample(
     height: f64,
     liquid_contact_height: Option<f64>,
 ) -> Result<SampledEnvironment, WorldQueryError> {
+    world.ensure_movement_origin(position)?;
     let player = Aabb::player_with_height_at(position, height);
     let liquid_player =
         Aabb::player_with_height_at(position, liquid_contact_height.unwrap_or(height));

@@ -104,6 +104,7 @@ fn probe_anchor(
     feet: Vec3,
     height: f64,
 ) -> Result<AnchorResolution, sim::WorldQueryError> {
+    world.ensure_movement_origin(feet)?;
     // The query grows by the full displacement budget so every collider the
     // probe could ever reach is visible in one bounded query through the
     // same PaletteWorld the frame already builds. The provenance surface

@@ -45,6 +45,10 @@ impl CollisionSnapshot {
 }
 
 impl CollisionWorld for CollisionSnapshot {
+    fn ensure_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
+        self.world().ensure_movement_origin(feet)
+    }
+
     fn registry_identity(&self) -> CollisionRegistryIdentity {
         self.0.registry.identity()
     }

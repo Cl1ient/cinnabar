@@ -7,6 +7,54 @@ fn load_air_column(store: &mut world::ChunkStore, x: i32) {
         .unwrap();
 }
 
+#[test]
+fn movement_waits_for_terrain_at_an_absent_teleport_destination() {
+    let mut registry = sim::CollisionRegistry::new();
+    registry.register(0, []).unwrap();
+    for intent in [ModeIntent::default(), boundary_flight()] {
+        let mut store = world::ChunkStore::new();
+        load_air_column(&mut store, 0);
+        let mut physics = LocalPhysicsController::default();
+        physics.reanchor_network_position(
+            [24.0, 80.0 + protocol::PLAYER_NETWORK_OFFSET, 8.0],
+            100,
+            false,
+        );
+        let anchored = physics.state().unwrap().clone();
+        for _ in 0..20 {
+            let frame = physics.advance_with_context(
+                TICK,
+                MovementInput::default(),
+                PhysicsSampleContext {
+                    mode_intent: intent,
+                    ..Default::default()
+                },
+                &sim::PaletteWorld::for_movement(&store, &registry, 0),
+            );
+            assert_eq!(frame.completed_ticks, 0);
+            assert!(matches!(
+                frame.blocked,
+                Some(sim::SimulationError::World(WorldQueryError::UnloadedChunk(
+                    _
+                )))
+            ));
+            assert_eq!(physics.state(), Some(&anchored));
+        }
+        load_air_column(&mut store, 1);
+        let frame = physics.advance_with_context(
+            TICK,
+            MovementInput::default(),
+            PhysicsSampleContext {
+                mode_intent: intent,
+                ..Default::default()
+            },
+            &sim::PaletteWorld::for_movement(&store, &registry, 0),
+        );
+        assert_eq!(frame.completed_ticks, 1);
+        assert!(frame.blocked.is_none());
+    }
+}
+
 /// Advances real ability flight into a missing neighbouring column.
 fn reach_missing_column(
     registry: &sim::CollisionRegistry,

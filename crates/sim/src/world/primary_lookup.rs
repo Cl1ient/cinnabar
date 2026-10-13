@@ -7,7 +7,7 @@ impl PaletteWorld<'_> {
     pub fn primary_runtime_id(&self, [x, y, z]: [i32; 3]) -> Result<u32, WorldQueryError> {
         let key = SubChunkKey::new(self.dimension, x >> 4, y >> 4, z >> 4);
         if !self.store.is_sub_chunk_loaded(key) {
-            if self.unloaded_boundary_revision(key.chunk()).is_some() {
+            if self.unloaded_boundary_sample([x, y, z]) {
                 return Ok(self.registry.air_runtime_id);
             }
             return Err(WorldQueryError::UnloadedChunk(key.chunk()));

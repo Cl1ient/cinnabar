@@ -5,6 +5,26 @@ const UNLOADED_BOUNDARY_REVISION: u64 = 0;
 const UNLOADED_BOUNDARY_VERTICAL_LIMIT: f64 = 100_000.0;
 
 impl<'a> PaletteWorld<'a> {
+    /// Admits neutral boundary sensing only within the boundary's supported vertical range.
+    pub(super) fn unloaded_boundary_sample(&self, block: [i32; 3]) -> bool {
+        let [x, y, z] = block;
+        f64::from(y) >= -UNLOADED_BOUNDARY_VERTICAL_LIMIT
+            && f64::from(y) < UNLOADED_BOUNDARY_VERTICAL_LIMIT
+            && self
+                .unloaded_boundary_revision(ChunkKey::new(self.dimension, x >> 4, z >> 4))
+                .is_some()
+    }
+
+    /// Keeps anchors in absent terrain blocked until their own feet region arrives.
+    pub(super) fn require_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
+        let [x, y, z] = block_floor(feet)?;
+        let section = SubChunkKey::new(self.dimension, x >> 4, y >> 4, z >> 4);
+        if self.unloaded_collision_barriers && !self.store.is_sub_chunk_loaded(section) {
+            return Err(WorldQueryError::UnloadedChunk(section.chunk()));
+        }
+        Ok(())
+    }
+
     /// Borrows movement terrain with solid unloaded-column collision barriers.
     /// Partially received columns still require authoritative data for every queried section.
     #[must_use]
@@ -79,6 +99,15 @@ impl<'a> PaletteWorld<'a> {
             .collect::<Vec<_>>();
         let identity = self.identity_for_chunks(chunks.iter().copied())?;
 
+        if (query.min.y < -UNLOADED_BOUNDARY_VERTICAL_LIMIT
+            || query.max.y > UNLOADED_BOUNDARY_VERTICAL_LIMIT)
+            && let Some(&chunk) = chunks
+                .iter()
+                .find(|&&chunk| self.unloaded_boundary_revision(chunk).is_some())
+        {
+            return Err(WorldQueryError::UnloadedChunk(chunk));
+        }
+
         let mut instances = self.unloaded_boundary_instances(query, &chunks);
         for x in min[0]..=max[0] {
             for z in min[2]..=max[2] {
@@ -131,6 +160,23 @@ mod tests {
         let mut store = ChunkStore::new();
         store.mark_chunk_loaded(ChunkKey::new(0, 0, 0)).unwrap();
         (store, registry)
+    }
+
+    #[test]
+    fn unloaded_boundaries_fail_closed_outside_supported_vertical_bounds() {
+        let (store, registry) = terrain();
+        let world = PaletteWorld::for_movement(&store, &registry, 0);
+        for y in [-100_002.0, 100_001.0] {
+            let query = Aabb::new(Vec3::new(15.5, y, 7.5), Vec3::new(16.5, y + 1.0, 8.5));
+            assert!(matches!(
+                world.collision_boxes(query),
+                Err(WorldQueryError::UnloadedChunk(_))
+            ));
+            assert!(matches!(
+                world.block_physics([16, y as i32, 8]),
+                Err(WorldQueryError::UnloadedChunk(_))
+            ));
+        }
     }
 
     #[test]

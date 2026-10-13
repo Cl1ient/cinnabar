@@ -7,6 +7,11 @@ use super::{
 };
 
 pub trait CollisionWorld {
+    /// Requires terrain at the movement origin before using neighbouring boundary geometry.
+    fn ensure_movement_origin(&self, _feet: Vec3) -> Result<(), WorldQueryError> {
+        Ok(())
+    }
+
     /// Registry provenance for ticks that read no terrain. Bare shape adapters remain neutral.
     fn registry_identity(&self) -> CollisionRegistryIdentity {
         CollisionQuery::synthetic(()).identity.registry

@@ -726,7 +726,7 @@ impl<'a> PaletteWorld<'a> {
         let chunk = ChunkKey::new(self.dimension, x >> 4, z >> 4);
         let key = SubChunkKey::new(self.dimension, x >> 4, y >> 4, z >> 4);
         if !self.store.is_sub_chunk_loaded(key) {
-            if self.unloaded_boundary_revision(chunk).is_some() {
+            if self.unloaded_boundary_sample([x, y, z]) {
                 return Ok(vec![self.registry.air_runtime_id]);
             }
             return Err(WorldQueryError::UnloadedChunk(chunk));
@@ -755,6 +755,10 @@ impl<'a> PaletteWorld<'a> {
 }
 
 impl CollisionWorld for PaletteWorld<'_> {
+    fn ensure_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
+        self.require_movement_origin(feet)
+    }
+
     fn registry_identity(&self) -> CollisionRegistryIdentity {
         self.registry.identity()
     }

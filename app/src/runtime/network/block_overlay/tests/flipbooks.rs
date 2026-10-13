@@ -839,8 +839,10 @@ fn horizontal_strip_replacement_retains_both_frames_in_timeline_order() {
         let start = frame.layer() as usize * bytes_per_frame;
         assert!(
             mip.rgba8[start..start + bytes_per_frame]
-                .chunks_exact(4)
-                .all(|pixel| pixel == color)
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| *pixel == color)
         );
     }
     assert_ne!(

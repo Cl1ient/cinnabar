@@ -10,10 +10,11 @@ fn spawn_remotes(stream: &mut WorldStream) {
         .unwrap()
         .skin
         .clone();
+    let mut sequence = 1;
     for id in [2u64, 3] {
         stream
             .submit(
-                id * 2 + 10,
+                sequence,
                 protocol::WorldEvent::Actor(protocol::ActorEvent::PlayerList(
                     protocol::PlayerListUpdateEvent {
                         entries: Arc::from([protocol::PlayerListEntry::Add {
@@ -27,9 +28,10 @@ fn spawn_remotes(stream: &mut WorldStream) {
                 )),
             )
             .unwrap();
+        sequence += 1;
         stream
             .submit(
-                id * 2 + 11,
+                sequence,
                 protocol::WorldEvent::Actor(protocol::ActorEvent::Spawn(
                     protocol::ActorSpawnEvent {
                         dimension: 0,
@@ -54,13 +56,29 @@ fn spawn_remotes(stream: &mut WorldStream) {
                 )),
             )
             .unwrap();
+        sequence += 1;
+        assert!(
+            stream.authority().actor(id).is_some(),
+            "remote spawn must commit"
+        );
+        assert!(
+            stream.authority().actor_player_profile(id).is_some(),
+            "remote profile must commit"
+        );
     }
     stream.prepare_actor_appearance_fixture();
     stream.advance_actor_interpolation_frame(1);
     for id in [2u64, 3] {
+        assert!(
+            stream
+                .authority()
+                .actor_rig(id)
+                .expect("committed remote rig")
+                .pose_evaluated
+        );
         stream
             .submit(
-                id + 20,
+                sequence,
                 protocol::WorldEvent::Actor(protocol::ActorEvent::Move(protocol::ActorMoveEvent {
                     dimension: 0,
                     runtime_id: id,
@@ -80,6 +98,7 @@ fn spawn_remotes(stream: &mut WorldStream) {
                 })),
             )
             .unwrap();
+        sequence += 1;
     }
     stream.advance_actor_interpolation_frame(1);
 }
@@ -130,6 +149,11 @@ fn remote_body_and_persona_publish_sampled_clamps_and_preserve_java_overrides() 
                     },
                     |_, _, _, _| false,
                     &mut geometries,
+                );
+                assert_eq!(
+                    bodies.remotes.len(),
+                    2,
+                    "both remote bodies must be drawable"
                 );
                 let mut batch = crate::presentation::actors::select_actor_presentations(
                     1,

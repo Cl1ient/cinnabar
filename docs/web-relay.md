@@ -49,13 +49,17 @@ A refused resume requires an explicit fresh session; gameplay is never
 replayed. Sign-out erases the account after play has ended.
 
 Admission is limited to 256 retained accounts and 256 transport connections, with
-four of each per peer IP. Pending Hello connections count toward connection limits.
+four of each per peer IP. TCP sockets count before TLS and HTTP processing;
+pending Hello connections also count. Upgraded connections retain their slot
+until the socket and handler have both ended.
 Idle accounts expire after ten minutes. Action and upload rate limits, bounded
 control messages, and deadlines apply to both transports. Public-address checks
 apply after DNS resolution to every game connection, transfer hop, pack URL and
 pack redirect; environment proxies cannot bypass them.
 
 All current gameplay batches and pack chunks use reliable ordered play framing.
+Inbound frame buffers grow with received data instead of allocating the full
+advertised payload from its header. The shared bridge frame limit still applies.
 WebSocket messages split larger bridge frames at the shared relay message limit;
 message boundaries do not change the bridge byte stream.
 Separate pack streams, gameplay datagrams, the browser adapter and entry page,

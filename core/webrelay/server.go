@@ -46,11 +46,13 @@ func (relay *Relay) Serve(ctx context.Context, cfg ListenConfig) error {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}}
 	wt := relay.transportServer(tlsConfig, cfg.UDPAddress)
 	tcp := &http.Server{Addr: cfg.TCPAddress, Handler: relay.Handler(), TLSConfig: tlsConfig,
-		ReadHeaderTimeout: helloTimeout, IdleTimeout: 2 * keepAliveInterval, MaxHeaderBytes: bridgecontract.RelayControlBytes}
+		ReadHeaderTimeout: helloTimeout, IdleTimeout: 2 * keepAliveInterval, MaxHeaderBytes: bridgecontract.RelayControlBytes,
+		ConnContext: relay.tcpConnContext}
 	tcpListener, err := net.Listen("tcp", cfg.TCPAddress)
 	if err != nil {
 		return err
 	}
+	tcpListener = &admittedTCPListener{Listener: tcpListener, relay: relay}
 	defer tcpListener.Close()
 	udpListener, err := net.ListenPacket("udp", cfg.UDPAddress)
 	if err != nil {
@@ -91,7 +93,7 @@ func (relay *Relay) serveSocket(w http.ResponseWriter, r *http.Request, channel 
 		return
 	}
 	client := clientAddr(r)
-	release, err := relay.admit(client, time.Now())
+	release, err := relay.admitSocket(r)
 	if err != nil {
 		http.Error(w, refusal(err), http.StatusTooManyRequests)
 		return

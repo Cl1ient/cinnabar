@@ -871,7 +871,7 @@ fn legacy_empty_main_arm_and_native_offhand_keep_separate_pose_stacks() {
             kind: HeldKind::Sprite,
         });
         let mut cache = java::HandCache::default();
-        let mut masked_pose = None;
+        let mut masked_pose: Option<[Arc<[render_model::RenderBoneTransform]>; 2]> = None;
         for (physics_alpha, actor_alpha) in [(0.75, 0.1), (0.25, 0.9)] {
             stream.sync_local_swing(actor_animation::LocalSwingProgress {
                 bedrock: [0.25, 0.5],

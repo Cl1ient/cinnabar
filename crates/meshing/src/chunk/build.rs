@@ -135,7 +135,8 @@ fn mesh_sub_chunk_core<S: crate::lighting::MeshLightSampler + ?Sized>(
     let mut facts = PaletteFacts::new(*classifier, visuals, network_id_mode, sub_chunk);
     // Every pass below asks about each voxel and its neighbours, so the section decodes once.
     facts.decode_voxels();
-    let connectivity = cave_connectivity(&facts);
+    let masks = VisibilityMasks::from_facts(&facts);
+    let connectivity = cave_connectivity(&facts, |[x, y, z]| !masks.occludes(x, y, z));
     if facts.is_air() {
         return ChunkMesh {
             cube_streams: Box::default(),
@@ -168,7 +169,6 @@ fn mesh_sub_chunk_core<S: crate::lighting::MeshLightSampler + ?Sized>(
             .seasonal_foliage
             .then(|| super::seasonal_foliage::SeasonalCoverage::new(palette_context));
 
-    let masks = VisibilityMasks::from_facts(&facts);
     let leaves = super::leaves::LeafOcclusion::new(palette_context);
     let mut cube_streams = CubeQuadStreams::default();
     let mut diagnostic_geometry = DiagnosticGeometryAccumulator::default();

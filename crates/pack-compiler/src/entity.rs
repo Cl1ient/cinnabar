@@ -33,6 +33,7 @@ mod native_bind_pose;
 mod native_dragon_geometry;
 mod native_held_items;
 mod pack;
+mod painting;
 mod sanitize;
 mod source;
 mod vanilla_refs;
@@ -160,6 +161,12 @@ fn compile_with_behavior(
     )?;
     collect_optional_family(
         root,
+        "textures/painting",
+        &["json", "png", "tga"],
+        &mut selected,
+    )?;
+    collect_optional_family(
+        root,
         "textures/items",
         &["json", "png", "tga"],
         &mut selected,
@@ -240,6 +247,13 @@ fn compile_with_behavior(
         debug_assert_eq!(source_index + 1, sources.len());
     }
     let native_binding_bytes = native_held_items::complete_sample_bindings(
+        root,
+        &mut sources,
+        &mut source_payloads,
+        &mut symbols,
+        &mut geometries,
+    )?;
+    total_source_bytes += painting::complete_bindings(
         root,
         &mut sources,
         &mut source_payloads,

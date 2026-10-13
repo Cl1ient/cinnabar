@@ -2739,6 +2739,14 @@ open. Non-glowstone fallback at an already-selected Nether spawn needs retained
 spawn-block authority. No complete visual or interaction parity gate is closed.
 See [vanilla rules](docs/reference/end-crystal-respawn-anchor.md).
 
+2026-10-13 painting rendering is in progress: dedicated painting spawn packets
+retain their motive and wall direction, and static front/border meshes use the
+accepted pack's atlas or individual images. Hanging-picture interaction boxes
+and painting pick requests are implemented. Native-server placement, break and
+pick acceptance, source-bound before/after frames, complete motif coverage and
+painting material/lighting parity remain incomplete. No actor live parity gate
+is closed by CPU tests or carrier preparation.
+
 2026-10-01 arrow entity rendering: native per-face UV defaults now use face
 dimensions, including fractional sizes, instead of a one-by-one texel region.
 The vanilla arrow's alpha-test/no-cull material samples its authored plane

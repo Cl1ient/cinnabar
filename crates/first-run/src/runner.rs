@@ -78,6 +78,7 @@ pub(super) struct Compiler<'a> {
     pub cancel: &'a AtomicBool,
     /// Leads its own process group so cancellation reaches its descendants. Under the update
     /// helper it stays in the helper's group instead, so a rollback stops it too.
+    #[cfg(unix)]
     pub own_group: bool,
 }
 

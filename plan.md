@@ -8275,3 +8275,11 @@ Regression coverage checks overlapping files and glyph sheets, missing-file fall
 and original rejection indexes. Version-matched vanilla captures remain incomplete;
 this change does not close a parity gate. Locale font fallback and built-in named
 font alias behavior remain unchanged and need independent verification.
+
+### Model texture-array selector coverage
+
+Model texture-array selector coverage is incomplete. Compilation retains typed
+selectors and output ranges for the existing explicit model bindings. Unrecognized
+model arrays stay unresolved instead of guessing from growth or selecting index zero.
+The generic terrain accessor, complete native binding inventory and custom selector
+expressions still need their own admission and coverage work.

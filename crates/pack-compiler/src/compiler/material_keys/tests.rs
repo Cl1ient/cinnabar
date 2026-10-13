@@ -80,7 +80,7 @@ fn unanimated_state_destinations_remain_available_to_new_pack_descriptions() {
 }
 
 #[test]
-fn weighted_uv_leaves_are_recorded_without_replacing_the_group_selector() {
+fn weighted_uv_leaves_and_the_representative_selector_are_recorded() {
     use crate::animation::{AnimationLimits, DecodedImage, compile_animation_plan};
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("textures")).unwrap();
@@ -134,8 +134,8 @@ fn weighted_uv_leaves_are_recorded_without_replacing_the_group_selector() {
     let first = selector.variation_start;
     let second = first + 1;
     let keys = build(&pack, &ids, &materials, &[]);
-    assert_eq!(keys.materials("tile"), [first, second]);
-    assert!(!keys.materials("tile").contains(&selector_id));
+    assert_eq!(keys.materials("tile"), [first, second, selector_id]);
+    assert_eq!(keys.flipbook_selector(selector_id), (1, 0));
     assert_eq!(keys.flipbook_selector(first), (1, 0));
     assert_eq!(keys.flipbook_selector(second), (1, 1));
     assert_eq!(

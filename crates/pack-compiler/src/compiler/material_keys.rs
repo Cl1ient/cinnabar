@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Records renderable terrain destinations, using weighted leaves instead of group selectors.
+/// Records terrain destinations for weighted leaves and their representative selectors.
 pub(super) fn build(
     pack: &PackSources,
     descriptors: &BTreeMap<Descriptor, u32>,
@@ -17,6 +17,7 @@ pub(super) fn build(
             .map(|animation| (animation.atlas_index, animation.atlas_tile_variant));
         let (key, index, variant) = destination(descriptor, animated);
         if material.variation_count > 0 {
+            routes.push((id, key, (index, 0)));
             routes.extend(
                 (0..material.variation_count)
                     .map(|variant| (material.variation_start + variant, key, (index, variant))),

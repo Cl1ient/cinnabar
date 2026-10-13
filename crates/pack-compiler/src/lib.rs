@@ -63,8 +63,8 @@ pub use compiler::{
 };
 pub use entity::{
     BlockMolang, BlockStateValue, CompileReferenceOutcome, EntityAssetCompilation,
-    EntityPackCompilation, EntityPackSkips, FallbackReason, MAX_PACK_ENTITY_BYTES,
-    MAX_PACK_ENTITY_SOURCES, RejectReason, compile_entity_assets,
+    EntityPackCompilation, EntityPackSkips, EquipmentBindingDependencies, FallbackReason,
+    MAX_PACK_ENTITY_BYTES, MAX_PACK_ENTITY_SOURCES, RejectReason, compile_entity_assets,
     compile_entity_assets_with_behavior_report, compile_entity_assets_with_report,
     compile_entity_pack, compile_equipment_textures, compile_equipment_textures_for_assets,
     compile_equipment_textures_for_assets_with, compile_equipment_textures_with,

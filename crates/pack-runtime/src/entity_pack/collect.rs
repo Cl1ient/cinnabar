@@ -105,19 +105,27 @@ pub fn collect_files(
         .collect::<BTreeSet<_>>();
     let definitions = DEFINITION_FAMILIES
         .map(|(prefix, key, merged)| (key, merged, merged_definitions(view, prefix, key)));
-    let mut overrides = References {
-        geometry: pack_geometry.clone(),
-        ..Default::default()
-    };
-    for (key, _, definitions) in &definitions {
-        let names = definitions.keys().cloned();
-        match *key {
-            "animations" => overrides.animations.extend(names),
-            "animation_controllers" => overrides.animation_controllers.extend(names),
-            _ => overrides.render_controllers.extend(names),
-        }
+    let mut overrides = pack_geometry.clone();
+    for (_, _, definitions) in &definitions {
+        overrides.extend(definitions.keys().cloned());
     }
-    let attachables = attachables::collect(view, vanilla_pack_dir, &overrides, vanilla);
+    let materials = material_definitions(view);
+    let material_document = materials.as_deref().and_then(parse_pack_json);
+    let binding_inputs = pack_compiler::EquipmentBindingDependencies::load(
+        vanilla_pack_dir,
+        material_document.as_ref(),
+    )
+    .ok();
+    if let Some(inputs) = &binding_inputs {
+        overrides.extend(inputs.authored_materials().iter().cloned());
+    }
+    let attachables = attachables::collect(
+        view,
+        vanilla_pack_dir,
+        &overrides,
+        vanilla,
+        binding_inputs.as_ref(),
+    );
     let mut references = References::default();
     for (_, bytes) in entities.iter().chain(&attachables) {
         if let Ok(actor) = pack_json::parse_jsonc::<Value>(bytes) {
@@ -176,7 +184,7 @@ pub fn collect_files(
         }
     }
     files.extend(entities);
-    if let Some(materials) = material_definitions(view) {
+    if let Some(materials) = materials {
         files.push(("materials/_pack.material".into(), materials));
     }
     files.extend(attachables);

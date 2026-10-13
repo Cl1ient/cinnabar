@@ -9,7 +9,7 @@ fn texture_only_packs_do_not_inherit_loose_attachable_bindings() {
     std::fs::write(
         root.path().join("attachables/fixture.json"),
         json!({
-            "minecraft:attachable": {"description": {"identifier": "fixture:armor",
+            "format_version": "1.10.0", "minecraft:attachable": {"description": {"identifier": "fixture:armor",
                 "textures": {"default": "textures/models/armor/fixture"}}}
         })
         .to_string(),
@@ -268,60 +268,127 @@ fn vanilla_texture_lookup_does_not_leave_the_pack_root() {
 
 #[test]
 fn artwork_only_is_decided_from_each_items_authored_dependencies() {
-    use super::{References, attachables::is_texture_only};
+    use super::attachables::is_texture_only;
     use std::collections::BTreeSet;
-    let document = json!({"minecraft:attachable": {"description": {
+    let document = json!({"format_version": "1.10.0", "minecraft:attachable": {"description": {
         "identifier": "fixture:coat.player", "item": {"fixture:coat": "1"},
-        "geometry": {"default": "geometry.fixture.coat"},
+        "geometry": {"default": "geometry.fixture.coat", "alternate": "geometry.fixture.alternate"},
+        "materials": {"default": "armor_leather", "enchanted": "armor_leather_enchanted"},
         "render_controllers": [{"controller.render.coat": "1"}],
-        "animations": {"idle": "animation.coat.idle", "controller": "controller.animation.coat"}
+        "animations": {"idle": "animation.coat.idle", "controller": "controller.animation.coat",
+            "wield_first_person": "animation.coat.first", "wield_third_person": "animation.coat.third"},
+        "animation_controllers": [{"active": "controller.animation.coat.extra"}]
     }}});
+    let inputs = pack_compiler::EquipmentBindingDependencies::default();
     let authored = BTreeSet::new();
-    let unrelated = References {
-        geometry: BTreeSet::from(["geometry.other".into()]),
-        render_controllers: BTreeSet::from(["controller.render.other".into()]),
-        ..Default::default()
-    };
-    assert!(is_texture_only(&document, &authored, &unrelated, None));
-    for changes in [
-        References {
-            geometry: BTreeSet::from(["geometry.fixture.coat".into()]),
-            ..Default::default()
-        },
-        References {
-            render_controllers: BTreeSet::from(["controller.render.coat".into()]),
-            ..Default::default()
-        },
-        References {
-            animations: BTreeSet::from(["animation.coat.idle".into()]),
-            ..Default::default()
-        },
-        References {
-            animation_controllers: BTreeSet::from(["controller.animation.coat".into()]),
-            ..Default::default()
-        },
+    let unrelated = BTreeSet::from(["geometry.other".into(), "controller.render.other".into()]);
+    assert!(is_texture_only(
+        &document,
+        &authored,
+        &unrelated,
+        None,
+        Some(&inputs)
+    ));
+    for changed in [
+        "geometry.fixture.coat",
+        "geometry.fixture.alternate",
+        "controller.render.coat",
+        "animation.coat.idle",
+        "animation.coat.first",
+        "animation.coat.third",
+        "controller.animation.coat",
+        "controller.animation.coat.extra",
+        "armor_leather",
+        "armor_leather_enchanted",
     ] {
-        assert!(!is_texture_only(&document, &authored, &changes, None));
+        assert!(
+            !is_texture_only(
+                &document,
+                &authored,
+                &BTreeSet::from([changed.into()]),
+                None,
+                Some(&inputs)
+            ),
+            "{changed}"
+        );
     }
     assert!(!is_texture_only(
         &document,
         &BTreeSet::from(["fixture:coat".into()]),
-        &References::default(),
-        None
+        &BTreeSet::new(),
+        None,
+        Some(&inputs),
     ));
     let mut vanilla = assets::VanillaEntityRefs::new();
     vanilla.geometry_parent.insert(
         "geometry.fixture.coat".into(),
         "geometry.fixture.parent".into(),
     );
-    let parent = References {
-        geometry: BTreeSet::from(["geometry.fixture.parent".into()]),
-        ..Default::default()
-    };
+    let parent = BTreeSet::from(["geometry.fixture.parent".into()]);
     assert!(!is_texture_only(
         &document,
         &authored,
         &parent,
-        Some(&vanilla)
+        Some(&vanilla),
+        Some(&inputs)
     ));
+    assert!(!is_texture_only(
+        &document,
+        &authored,
+        &BTreeSet::new(),
+        None,
+        None
+    ));
+}
+
+#[test]
+fn artwork_only_checks_installed_material_parents_and_skinning_variants() {
+    use super::attachables::is_texture_only;
+    use std::collections::BTreeSet;
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("materials")).unwrap();
+    std::fs::write(
+        root.path().join("materials/fixture.material"),
+        json!({"materials": {
+            "coat:coat_parent": {}, "coat_parent:armor_leather": {}
+        }})
+        .to_string(),
+    )
+    .unwrap();
+    let document = json!({"format_version": "1.10.0", "minecraft:attachable": {"description": {
+        "identifier": "fixture:coat", "materials": {"default": "coat.skinning"}
+    }}});
+    for (declaration, fields, unchanged) in [
+        ("armor_leather", json!({"defines": []}), false),
+        ("coat_parent:entity", json!({}), false),
+        (
+            "+coat_parent:armor_leather",
+            json!({"-defines": ["USE_COLOR_MASK"]}),
+            false,
+        ),
+        (
+            "coat:entity",
+            json!({"+defines": ["USE_COLOR_MASK"]}),
+            false,
+        ),
+        ("unrelated:entity", json!({"defines": []}), true),
+    ] {
+        let mut materials = serde_json::Map::new();
+        materials.insert(declaration.into(), fields);
+        let authored = json!({"materials": materials});
+        let inputs =
+            pack_compiler::EquipmentBindingDependencies::load(Some(root.path()), Some(&authored))
+                .unwrap();
+        assert_eq!(
+            is_texture_only(
+                &document,
+                &BTreeSet::new(),
+                inputs.authored_materials(),
+                None,
+                Some(&inputs)
+            ),
+            unchanged,
+            "{declaration}"
+        );
+    }
 }

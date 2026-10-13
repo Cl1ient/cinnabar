@@ -55,7 +55,7 @@ pub(crate) use source::{open_source_handle, read_bounded_source};
 #[allow(unused_imports)] // Integration publishes this private leaf after review.
 pub use animation::{CompileReferenceOutcome, FallbackReason, RejectReason};
 pub use attachable::{
-    compile_item_attack_timings, compile_item_foods,
+    EquipmentBindingDependencies, compile_item_attack_timings, compile_item_foods,
     compile_item_use as compile_item_use_durations, compile_item_use_profiles,
     compile_textures as compile_equipment_textures,
     compile_textures_for_assets as compile_equipment_textures_for_assets,

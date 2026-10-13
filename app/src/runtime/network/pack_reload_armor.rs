@@ -490,3 +490,87 @@ fn mixed_texture_and_geometry_reload_keeps_the_authored_equipment_model() {
     );
     assert!(catalog.binding(ITEM).is_some());
 }
+
+#[test]
+fn mixed_texture_and_material_reload_disables_authored_armour_dye() {
+    let (refs, base_pack, installed) = base(TEXTURE);
+    let base_catalog = base_pack.equipment.clone();
+    let dye = Some(0x234567);
+    assert_eq!(
+        base_catalog
+            .as_ref()
+            .unwrap()
+            .binding(ITEM)
+            .unwrap()
+            .color_mask_rgb(dye),
+        dye
+    );
+    let icons = Arc::new(
+        assets::RuntimeIconCatalog::decode(
+            &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
+        )
+        .unwrap(),
+    );
+    let (mut runtime, base_pages, _) = EquipmentRuntime::build(
+        base_pack.assets,
+        base_pack.equipment,
+        icons,
+        None,
+        None,
+        ActorArtworkPages::default(),
+    );
+    let body = body(&mut runtime);
+    let equipped = equipped(dye, false);
+    assert_ne!(
+        runtime.layers_for(&body, &equipped, None)[0]
+            .submission
+            .tint,
+        0
+    );
+    let materials = serde_json::to_vec(&serde_json::json!({"materials": {
+        "armor_leather": {"defines": []}
+    }}))
+    .unwrap();
+    let pixels = png([40, 50, 60, 255]);
+    let view = resource_pack::LayeredPackView::new(super::super::pack_reload_tests::stack(&[
+        (TEXTURE, &pixels),
+        ("materials/fixture.material", &materials),
+    ]));
+    let pack = pack_runtime::entity_pack::compile(
+        &view,
+        Some(&refs),
+        Some(installed.path()),
+        base_catalog.as_deref(),
+    )
+    .unwrap();
+    let catalog = pack.equipment.as_ref().unwrap();
+    let binding = catalog
+        .binding(ITEM)
+        .expect("the changed material requires a pack binding");
+    assert_eq!(binding.color_mask, assets::EquipmentColorMask::NoMask);
+    assert_eq!(binding.color_mask_rgb(dye), None);
+    let (pages, locations) =
+        base_pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(catalog));
+    runtime.set_pack_layer(Some((
+        Arc::clone(&pack.assets),
+        pack.equipment.clone(),
+        locations,
+    )));
+    assert_eq!(
+        worn_pixel(&mut runtime, &body, &equipped, &pages),
+        [40, 50, 60, 255]
+    );
+    assert_eq!(
+        runtime.layers_for(&body, &equipped, None)[0]
+            .submission
+            .tint,
+        0
+    );
+    runtime.set_pack_layer(None);
+    assert_ne!(
+        runtime.layers_for(&body, &equipped, None)[0]
+            .submission
+            .tint,
+        0
+    );
+}

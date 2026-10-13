@@ -26,8 +26,10 @@ use super::{SourcePayloads, invalid, json::parse_unique_json, read_bounded_sourc
 mod item_attack;
 mod item_food;
 pub use item_food::compile_item_foods;
+mod dependencies;
 mod resources;
 mod textures;
+pub use dependencies::EquipmentBindingDependencies;
 pub use item_attack::compile_item_attack_timings;
 pub(super) use resources::controller_resources;
 use resources::{ControllerResources, named_resource};

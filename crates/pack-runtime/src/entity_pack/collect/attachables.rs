@@ -6,8 +6,9 @@ use super::*;
 pub(super) fn collect(
     view: &LayeredPackView,
     vanilla_pack_dir: Option<&Path>,
-    overrides: &References,
+    overrides: &BTreeSet<String>,
     vanilla: Option<&VanillaEntityRefs>,
+    inputs: Option<&pack_compiler::EquipmentBindingDependencies>,
 ) -> Vec<(Box<str>, Vec<u8>)> {
     let mut files = view
         .list("attachables/")
@@ -83,7 +84,7 @@ pub(super) fn collect(
             }
             let mut referenced = BTreeSet::new();
             collect_texture_strings(&value, &mut referenced);
-            if !is_texture_only(&value, &authored_items, overrides, vanilla)
+            if !is_texture_only(&value, &authored_items, overrides, vanilla, inputs)
                 && referenced
                     .iter()
                     .any(|stem| texture_stems.contains(stem.as_str()))
@@ -115,30 +116,24 @@ fn bound_items(value: &Value) -> Vec<String> {
 pub(super) fn is_texture_only(
     document: &Value,
     authored_items: &BTreeSet<String>,
-    overrides: &References,
+    overrides: &BTreeSet<String>,
     vanilla: Option<&VanillaEntityRefs>,
+    inputs: Option<&pack_compiler::EquipmentBindingDependencies>,
 ) -> bool {
-    let mut references = References::default();
-    references.read(document);
-    let mut pending = references.geometry.iter().cloned().collect::<Vec<_>>();
+    let Some(mut references) = inputs.and_then(|inputs| inputs.names(document).ok()) else {
+        // Unreadable inputs cannot prove the installed binding remains unchanged.
+        return false;
+    };
+    let mut pending = references.iter().cloned().collect::<Vec<_>>();
     while let Some(geometry) = pending.pop() {
         if let Some(parent) = vanilla.and_then(|refs| refs.geometry_parent.get(&geometry))
-            && references.geometry.insert(parent.clone())
+            && references.insert(parent.clone())
         {
             pending.push(parent.clone());
         }
     }
-    let References {
-        geometry,
-        render_controllers,
-        animations,
-        animation_controllers,
-    } = references;
     bound_items(document)
         .iter()
         .all(|item| !authored_items.contains(item))
-        && geometry.is_disjoint(&overrides.geometry)
-        && render_controllers.is_disjoint(&overrides.render_controllers)
-        && animations.is_disjoint(&overrides.animations)
-        && animation_controllers.is_disjoint(&overrides.animation_controllers)
+        && references.is_disjoint(overrides)
 }

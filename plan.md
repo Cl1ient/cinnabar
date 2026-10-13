@@ -2945,8 +2945,10 @@ Texture-only equipment overrides replace artwork at validated startup texture pa
 startup bindings, controllers and geometry remain active without loose resource files.
 Artwork-only layers support item textures with no entity symbols, create no pack attachable
 bindings and need no sidecar rebuild. Each item's authored dependencies decide whether it
-uses this path. Mixed texture and geometry or controller overrides retain the installed
-attachable binding against the replacement definitions.
+uses this path. Mixed texture and geometry, controller or material overrides retain the
+installed attachable binding against the replacement definitions. Classification uses
+the binding compiler's description inputs and material parser, including inherited
+material defines and skinning variants.
 Compiles and artwork use the accepted stack's content identity and startup carrier identity.
 Authored pack attachables remain separate. Held pixel meshes and Java raster frames include
 the resolved artwork page and layer in their cache keys. Controller glint samplers do not

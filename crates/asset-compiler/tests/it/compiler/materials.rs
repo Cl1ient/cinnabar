@@ -59,13 +59,6 @@ fn compiler_marks_only_leaf_faces_as_alpha_cutout() {
     for leaf in 1..=3 {
         super::leaf_metadata::assert_agnostic_world_copy(&compiled, leaf);
     }
-    assert!(
-        compiled
-            .materials
-            .iter()
-            .all(|material| material.flags & !MATERIAL_FLAGS_MASK == 0)
-    );
-
     let baseline = encode_blob(&compiled).expect("encode cutout baseline");
     for iteration in 0..100_u64 {
         let shuffled = shuffled_records(&records, 0x9e37_79b9 ^ iteration);

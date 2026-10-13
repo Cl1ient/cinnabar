@@ -11,6 +11,11 @@ mapping and an original-art GPU fixture. This bounded geometry correction leaves
 exhaustive residual-family, world-join and hardware performance gates open.
 
 Common farmland crops now retain four lowered rows with stage-specific artwork.
+Fruit stems retain growth height, stage colour and facing-oriented connectors;
+pitcher crops retain pods and separate flower halves; torchflowers retain their
+stage artwork at the plant width. Berry bushes retain their growth-stage artwork
+and narrower sprite geometry. Exact native-client crop comparison,
+sub-unit geometry and atlas-edge UV calibration remain incomplete.
 Compiler regressions cover all eight growth states and both network-ID modes;
 full crop presentation parity and the broader phase gates remain open.
 

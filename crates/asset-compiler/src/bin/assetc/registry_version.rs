@@ -157,6 +157,7 @@ mod tests {
         for value in [1_u32, 1, 0, 0, 1, 1] {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
+        let record_start = bytes.len();
         bytes.extend_from_slice(&air.sequential_id.to_le_bytes());
         bytes.extend_from_slice(&air.network_hash.to_le_bytes());
         bytes.push(assets::BlockFlags::AIR.bits()); // flags
@@ -173,7 +174,7 @@ mod tests {
         for _ in 0..8 {
             bytes.extend_from_slice(&0_u32.to_le_bytes());
         }
-        bytes.extend_from_slice(&[0; 17]); // Explicit unresolved descriptor fields.
+        bytes.resize(record_start + assets::registry::RECORD_HEADER_BYTES, 0);
         bytes.extend_from_slice(b"minecraft:air");
         bytes.extend_from_slice(b"{}");
         bytes

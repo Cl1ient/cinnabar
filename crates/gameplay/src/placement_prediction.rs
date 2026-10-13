@@ -63,25 +63,26 @@ pub fn predicted_placement(
     } else {
         placement_cell(context.clicked, context.input.face)
     };
-    let destination_block = world.primary_runtime_id(destination).ok()?;
-    let free = collisions
-        .block_placement_facts(mode, destination_block)
-        .flags
-        .contains(Flags::REPLACEABLE);
-    let merged = [
-        (context.clicked, Some(context.input.face)),
-        (destination, None),
-    ]
-    .into_iter()
-    .filter(|(position, face)| face.is_some() || *position != context.clicked)
-    .find_map(|(position, face)| {
-        let existing = world.primary_runtime_id(position).ok()?;
-        let facts = collisions.block_placement_facts(mode, existing);
-        crate::placement_program::merged(held_facts, facts, face, context.input.face)
-            .map(|(set, key, full)| (position, set, key, full))
-    });
-    let position = merged.map_or(destination, |merged| merged.0);
-    if (merged.is_none() && !free) || !context.build_height.contains(&position[1]) {
+    let clicked_merge = crate::placement_program::merged(
+        held_facts,
+        clicked_facts,
+        Some(context.input.face),
+        context.input.face,
+    );
+    let (position, merged) = if let Some(merged) = clicked_merge {
+        (context.clicked, Some(merged))
+    } else {
+        let destination_block = world.primary_runtime_id(destination).ok()?;
+        let facts = collisions.block_placement_facts(mode, destination_block);
+        let merged = (destination != context.clicked)
+            .then(|| crate::placement_program::merged(held_facts, facts, None, context.input.face))
+            .flatten();
+        if merged.is_none() && !facts.flags.contains(Flags::REPLACEABLE) {
+            return None;
+        }
+        (destination, merged)
+    };
+    if !context.build_height.contains(&position[1]) {
         return None;
     }
     let existing = world.primary_runtime_id(position).ok()?;
@@ -108,7 +109,7 @@ pub fn predicted_placement(
             collisions.block_is_full_cube(mode, block),
         )
     });
-    let (set, key, full_cell) = if let Some((_, set, key, full)) = merged {
+    let (set, key, full_cell) = if let Some((set, key, full)) = merged {
         (set, key, full)
     } else {
         let (set, key) = crate::placement_program::placed(

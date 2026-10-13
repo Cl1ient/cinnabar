@@ -92,7 +92,8 @@ fn registry_reader_decodes_fixed_collision_seed() {
     for coordinate in coordinates {
         encoded_box.extend_from_slice(&coordinate.to_le_bytes());
     }
-    bytes.splice(record_start + 56..record_start + 56, encoded_box);
+    let collision_start = record_start + assets::registry::RECORD_HEADER_BYTES;
+    bytes.splice(collision_start..collision_start, encoded_box);
 
     let records = read_registry(&bytes).expect("collision block registry registry");
     assert_eq!(records[0].collision_seed.shape_id, 7);
@@ -103,6 +104,9 @@ fn registry_reader_decodes_fixed_collision_seed() {
     assert_eq!(records[0].collision_seed.boxes.len(), 1);
     assert_eq!(records[0].collision_seed.boxes[0].min_x, -6_250_000);
     assert_eq!(records[0].collision_seed.boxes[0].max_y, 95_000_005);
+    assert_eq!(records[0].name.as_ref(), "minecraft:test");
+    assert_eq!(records[0].canonical_state.as_ref(), "{}");
+    assert_eq!(records[0].model_state.placement_facts(), Default::default());
 }
 
 #[test]
@@ -128,7 +132,7 @@ fn registry_reader_rejects_false_valentine_name_overlap_metadata() {
     bytes[28..32].copy_from_slice(&1_u32.to_le_bytes());
     bytes[32..36].copy_from_slice(&0_u32.to_le_bytes());
     let first_start = 36;
-    let second_start = first_start + 56 + first_name.len() + 2;
+    let second_start = first_start + assets::registry::RECORD_HEADER_BYTES + first_name.len() + 2;
     bytes[first_start + 14] = 0x0f;
     bytes[second_start + 14] = 0x0f;
     assert!(matches!(

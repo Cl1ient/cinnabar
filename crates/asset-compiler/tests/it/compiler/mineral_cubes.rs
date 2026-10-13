@@ -2,8 +2,8 @@ use {
     super::support::*,
     assets::{
         BlockFace, BlockFlags, CollisionBox, CollisionConfidence, ContributorRole,
-        DIAGNOSTIC_MATERIAL, ModelFamily, ModelState, NetworkIdMode, RegistryRecord, RuntimeAssets,
-        VisualKind, encode_blob, read_registry,
+        DIAGNOSTIC_MATERIAL, ModelFamily, NetworkIdMode, RegistryRecord, RuntimeAssets, VisualKind,
+        encode_blob, read_registry,
     },
     std::path::Path,
 };
@@ -86,7 +86,15 @@ fn protocol_1001_mineral_cube_inventory_is_exact_and_collision_backed() {
         assert_eq!(record.model_family, ModelFamily::Unknown);
         assert_eq!(record.contributor_role, ContributorRole::Primary);
         assert_eq!(record.flags, BlockFlags::empty());
-        assert_eq!(record.model_state, ModelState::default());
+        assert_eq!(record.model_state.mask(), 0);
+        let placement = record.model_state.placement_facts();
+        assert_eq!(
+            placement.rule,
+            assets::registry::BlockPlacementRule::Identity
+        );
+        assert_ne!(placement.set, 0);
+        assert_eq!(placement.key, 0);
+        assert_eq!(placement.alternate, None);
         assert_eq!(record.face_coverage, 0);
         assert_eq!(record.collision_seed.shape_id, 1);
         assert_eq!(

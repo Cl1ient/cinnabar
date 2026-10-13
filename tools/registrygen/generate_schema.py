@@ -69,7 +69,8 @@ def rust_declarations(schema):
               ", ".join(json.dumps(name) for name in schema["compatibility_replaceable"]) + "];"]
     size = sum({"u8": 1, "u16": 2, "u32": 4, "u32[8]": 32}[f["type"]]
                for f in schema["record_header"])
-    lines.append(f"pub(super) const RECORD_HEADER_BYTES: usize = {size};")
+    lines.append("/// The fixed record prefix size generated from the shared wire schema.")
+    lines.append(f"pub const RECORD_HEADER_BYTES: usize = {size};")
     for limit in schema["limits"]:
         if limit["rust_name"]:
             lines.append(f'pub(super) const {limit["rust_name"]}: usize = {limit["value"]};')

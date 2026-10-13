@@ -61,6 +61,7 @@ pub fn pack_with_flipbooks(flipbooks: &str) -> TempDir {
     directory
 }
 
+/// Encodes records with unresolved survival and placement descriptors.
 pub fn registry_bytes(records: &[RegistryFixture<'_>]) -> Vec<u8> {
     let mut bytes = assets::registry::REGISTRY_MAGIC.to_vec();
     bytes.extend_from_slice(&1001_u32.to_le_bytes());
@@ -71,6 +72,7 @@ pub fn registry_bytes(records: &[RegistryFixture<'_>]) -> Vec<u8> {
     bytes.extend_from_slice(&(records.len() as u32).to_le_bytes());
     bytes.extend_from_slice(&(records.len() as u32).to_le_bytes());
     for &(sequential_id, network_hash, flags, name, state) in records {
+        let record_start = bytes.len();
         bytes.extend_from_slice(&sequential_id.to_le_bytes());
         bytes.extend_from_slice(&network_hash.to_le_bytes());
         bytes.push(flags);
@@ -87,7 +89,7 @@ pub fn registry_bytes(records: &[RegistryFixture<'_>]) -> Vec<u8> {
         for _ in 0..8 {
             bytes.extend_from_slice(&0_u32.to_le_bytes());
         }
-        bytes.extend_from_slice(&[0; 17]); // Explicit unresolved survival and placement facts.
+        bytes.resize(record_start + assets::registry::RECORD_HEADER_BYTES, 0);
         bytes.extend_from_slice(name);
         bytes.extend_from_slice(state);
     }

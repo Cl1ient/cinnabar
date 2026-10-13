@@ -15,12 +15,11 @@ pub use schema::{
     CollisionSeed, ContributorRole, LEGACY_PHYSICS_REGISTRY_MAGIC, ModelFamily, ModelState,
     ModelStateField, MovementSemantics, PHYSICS_MOVEMENT_SEMANTICS_OFFSET,
     PHYSICS_RECORD_HEADER_BYTES, PHYSICS_REGISTRY_HEADER_BYTES, PHYSICS_REGISTRY_MAGIC,
-    REGISTRY_MAGIC, RegistryProvenance, RegistryRecord,
+    RECORD_HEADER_BYTES, REGISTRY_MAGIC, RegistryProvenance, RegistryRecord,
 };
 use schema::{
     LEGACY_REGISTRY_PROTOCOL, MAX_COLLISION_BOXES, MAX_REGISTRY_RECORDS, MAX_REGISTRY_STATE_BYTES,
-    RECORD_HEADER_BYTES, RecordHeader, read_collision_box, read_record_header,
-    read_registry_metadata,
+    RecordHeader, read_collision_box, read_record_header, read_registry_metadata,
 };
 
 /// Provisional compiled survival and support facts read by numerical state identity.

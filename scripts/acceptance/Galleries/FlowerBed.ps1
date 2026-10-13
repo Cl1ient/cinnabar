@@ -1,12 +1,13 @@
 function Get-FlowerBedCoverageEvidence {
     param([Parameter(Mandatory = $true)][string]$RegistryPath)
 
+    $format = Get-BlockRegistryWireFormat
     $registryBytes = [IO.File]::ReadAllBytes($RegistryPath)
     $reader = [IO.BinaryReader]::new([IO.MemoryStream]::new($registryBytes, $false))
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
     try {
-        if ($utf8.GetString($reader.ReadBytes(8)) -cne 'BREG1003') {
-            throw 'flowerbed coverage requires a BREG1003 registry'
+        if ($utf8.GetString($reader.ReadBytes($format.MagicBytes)) -cne $format.Magic) {
+            throw "flowerbed coverage requires a $($format.Magic) registry"
         }
         $registryProtocol = $reader.ReadUInt32()
         $null = $reader.ReadUInt32()
@@ -23,7 +24,7 @@ function Get-FlowerBedCoverageEvidence {
             $null = $reader.ReadUInt16()
             $nameLength = [int]$reader.ReadUInt16()
             $stateLength = [int]$reader.ReadUInt32()
-            $null = $reader.ReadBytes(32 + 24 * $boxCount)
+            $null = $reader.ReadBytes($format.BytesAfterLengths + $format.CollisionBoxBytes * $boxCount)
             $name = $utf8.GetString($reader.ReadBytes($nameLength))
             $canonicalState = $utf8.GetString($reader.ReadBytes($stateLength))
             if ($family -eq 31) {
@@ -52,7 +53,7 @@ function Get-FlowerBedCoverageEvidence {
             }
         }
         if ($reader.BaseStream.Position -ne $reader.BaseStream.Length) {
-            throw 'BREG1003 registry has trailing bytes'
+            throw "$($format.Magic) registry has trailing bytes"
         }
     }
     finally { $reader.Dispose() }

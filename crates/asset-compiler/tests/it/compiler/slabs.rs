@@ -157,6 +157,29 @@ fn expected_slab_quads(materials: [u32; 6], min_y: i16, max_y: i16) -> [ModelQua
 }
 
 #[test]
+fn reduced_renamed_slab_registry_preserves_visual_selectors_without_placement_identities() {
+    let record = generated_slab_record(0, 20_000, "minecraft:test_slab", 0);
+    assert_ne!(record.model_state.placement_facts().set, 0);
+    let bytes = registry_bytes(std::slice::from_ref(&record));
+    let decoded = read_registry(&bytes).expect("decode reduced visual fixture");
+    assert_eq!(decoded.len(), 1);
+    let fixture = &decoded[0];
+    assert_eq!(fixture.name, record.name);
+    assert_eq!(fixture.model_family, record.model_family);
+    assert_eq!(fixture.model_state.mask(), record.model_state.mask());
+    assert_eq!(
+        fixture.model_state.get(ModelStateField::Half),
+        record.model_state.get(ModelStateField::Half)
+    );
+    assert_eq!(
+        fixture.model_state.survival_facts(),
+        record.model_state.survival_facts()
+    );
+    assert_eq!(fixture.model_state.placement_facts(), Default::default());
+    assert_eq!(fixture.collision_seed, record.collision_seed);
+}
+
+#[test]
 fn compiler_slab_templates_match_exact_exterior_positions_uvs_materials_and_flags() {
     let directory = tempfile::tempdir().expect("create slab geometry fixture");
     write_slab_pack(directory.path());

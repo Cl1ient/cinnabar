@@ -141,11 +141,12 @@ function Set-TestMcbeas05Seal {
 function Get-TestRegistryEntries {
     param([Parameter(Mandatory = $true)][string]$RegistryPath)
 
+    $format = Get-BlockRegistryWireFormat
     $bytes = [IO.File]::ReadAllBytes($RegistryPath)
     $reader = [IO.BinaryReader]::new([IO.MemoryStream]::new($bytes, $false))
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
     try {
-        Assert-Equal 'BREG1003' $utf8.GetString($reader.ReadBytes(8)) 'test registry helper received the wrong schema'
+        Assert-Equal $format.Magic $utf8.GetString($reader.ReadBytes($format.MagicBytes)) 'test registry helper received the wrong schema'
         Assert-Equal ([uint32](Get-BedrockTargetManifest -ProjectRoot $ProjectRoot).wire_protocol) `
             $reader.ReadUInt32() 'test registry helper received the wrong protocol'
         $null = $reader.ReadUInt32()
@@ -162,7 +163,7 @@ function Get-TestRegistryEntries {
             $null = $reader.ReadUInt16()
             $nameLength = [int]$reader.ReadUInt16()
             $stateLength = [int]$reader.ReadUInt32()
-            $null = $reader.ReadBytes(32 + 24 * $boxCount)
+            $null = $reader.ReadBytes($format.BytesAfterLengths + $format.CollisionBoxBytes * $boxCount)
             $name = $utf8.GetString($reader.ReadBytes($nameLength))
             $canonicalState = $utf8.GetString($reader.ReadBytes($stateLength))
             $entries.Add([pscustomobject][ordered]@{
@@ -172,6 +173,8 @@ function Get-TestRegistryEntries {
                 canonical_state = $canonicalState
             })
         }
+        Assert-Equal $reader.BaseStream.Length $reader.BaseStream.Position `
+            'test registry helper received trailing bytes'
         return @($entries)
     }
     finally {

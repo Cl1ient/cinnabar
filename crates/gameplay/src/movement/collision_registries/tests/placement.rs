@@ -158,6 +158,74 @@ fn a_matching_clicked_slab_predicts_its_double_in_the_same_cell() {
 }
 
 #[test]
+fn clicked_slab_merges_at_build_height_without_a_loaded_cell_above() {
+    use serde_json::json;
+    for mode in [NetworkIdMode::Sequential, NetworkIdMode::Hashed] {
+        let mut store = store(mode);
+        let slab = record(
+            "minecraft:oak_slab",
+            &[("minecraft:vertical_half", json!("bottom"))],
+        );
+        store
+            .update_block(
+                SubChunkKey::new(0, 0, 0, 0),
+                BlockUpdate::new(8, 15, 8, 0, id(slab, mode)),
+                id(record("minecraft:air", &[]), mode),
+            )
+            .unwrap();
+        let around = surroundings();
+        let mut context = context(&around);
+        context.clicked = [8, 15, 8];
+        let result = predict("minecraft:oak_slab", &store, mode, &context)
+            .expect("same-cell slab merge at the top of the loaded dimension");
+        assert_eq!(result.position, context.clicked);
+        assert_eq!(
+            fixtures().1.block_identifier(mode, result.block),
+            Some("minecraft:oak_double_slab")
+        );
+        assert!(result.additional.is_empty());
+    }
+}
+
+#[test]
+fn clicked_snow_stacks_at_an_unloaded_sub_chunk_boundary() {
+    use serde_json::json;
+    for mode in [NetworkIdMode::Sequential, NetworkIdMode::Hashed] {
+        let mut store = store(mode);
+        let snow = record(
+            "minecraft:snow_layer",
+            &[("height", json!(0)), ("covered_bit", json!(0))],
+        );
+        store
+            .update_block(
+                SubChunkKey::new(0, 0, 0, 0),
+                BlockUpdate::new(15, 8, 8, 0, id(snow, mode)),
+                id(record("minecraft:air", &[]), mode),
+            )
+            .unwrap();
+        let around = surroundings();
+        let mut context = context(&around);
+        context.clicked = [15, 8, 8];
+        context.input.face = 5;
+        context.input.click_position = [1.0, 0.5, 0.5];
+        let result = predict("minecraft:snow_layer", &store, mode, &context)
+            .expect("same-cell snow merge beside an unloaded sub-chunk");
+        assert_eq!(result.position, context.clicked);
+        assert_eq!(
+            result.block,
+            id(
+                record(
+                    "minecraft:snow_layer",
+                    &[("height", json!(1)), ("covered_bit", json!(0))],
+                ),
+                mode
+            )
+        );
+        assert!(result.additional.is_empty());
+    }
+}
+
+#[test]
 fn invalid_support_height_unloaded_data_and_actor_overlap_refuse_prediction() {
     let mode = NetworkIdMode::Sequential;
     let mut store = store(mode);

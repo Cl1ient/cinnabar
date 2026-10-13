@@ -1,3 +1,48 @@
+# Returns a primitive or fixed-array field's encoded size in the registry schema.
+function Get-RegistryWireTypeBytes {
+    param([Parameter(Mandatory = $true)][string]$Type)
+
+    if ($Type -notmatch '^(u8|u16|u32|i32)(?:\[(\d+)\])?$') {
+        throw "unsupported registry wire type: $Type"
+    }
+    $count = if ([string]::IsNullOrEmpty($Matches[2])) { 1 } else { [int]$Matches[2] }
+    $width = switch ($Matches[1]) {
+        'u8' { 1 }
+        'u16' { 2 }
+        default { 4 }
+    }
+    return $width * $count
+}
+
+# Derives the registry magic and record tail sizes from the shared wire schema.
+function Get-BlockRegistryWireFormat {
+    $schemaPath = Join-Path $PSScriptRoot '../../crates/assets/data/registry-schema.json'
+    $schema = Get-Content -Raw -LiteralPath $schemaPath | ConvertFrom-Json
+    $recordBytes = 0
+    $lengthsEnd = 0
+    $valuesEnd = 0
+    foreach ($field in $schema.record_header) {
+        $recordBytes += Get-RegistryWireTypeBytes -Type ([string]$field.type)
+        if ([string]$field.name -ceq 'state_len') { $lengthsEnd = $recordBytes }
+        if ([string]$field.name -ceq 'values') { $valuesEnd = $recordBytes }
+    }
+    if ($lengthsEnd -eq 0 -or $valuesEnd -le $lengthsEnd) {
+        throw 'registry schema is missing the record lengths or model values'
+    }
+    $collisionBoxBytes = 0
+    $collisionBox = @($schema.structs | Where-Object rust_name -CEQ 'CollisionBox')[0]
+    foreach ($field in $collisionBox.fields) {
+        $collisionBoxBytes += Get-RegistryWireTypeBytes -Type ([string]$field.rust_type)
+    }
+    return [pscustomobject]@{
+        Magic = [string]$schema.magic
+        MagicBytes = [Text.Encoding]::UTF8.GetByteCount([string]$schema.magic)
+        BytesAfterLengths = $recordBytes - $lengthsEnd
+        BytesAfterValues = $recordBytes - $valuesEnd
+        CollisionBoxBytes = $collisionBoxBytes
+    }
+}
+
 function ConvertTo-CommandArgument {
     param([Parameter(Mandatory = $true)][string]$Value)
 

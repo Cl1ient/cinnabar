@@ -1,3 +1,15 @@
+    $registryEntries = @(Get-TestRegistryEntries -RegistryPath $BlockRegistry)
+    $registryBytes = [IO.File]::ReadAllBytes($BlockRegistry)
+    $registryRecordCount = [int][BitConverter]::ToUInt32($registryBytes, 16)
+    Assert-Equal $registryRecordCount $registryEntries.Count 'registry descriptors shifted the fixture record boundaries'
+    Assert-Equal 0 $registryEntries[0].sequential_id 'fixture reader lost the first registry identity'
+    Assert-Equal ($registryRecordCount - 1) $registryEntries[-1].sequential_id 'fixture reader lost the last registry identity'
+    $trailingRegistry = Join-Path $TempRoot 'registry with trailing bytes.bin'
+    [IO.File]::WriteAllBytes($trailingRegistry, [byte[]]($registryBytes + [byte]0))
+    Assert-ThrowsLike {
+        Get-TestRegistryEntries -RegistryPath $trailingRegistry
+    } 'test registry helper received trailing bytes*' 'fixture reader accepted bytes beyond the declared records'
+
     $crossCropPlan = New-CrossCropGalleryPlan `
         -MutationCoordinate @(100, 64, 200) `
         -Pose CrossCropGalleryFront `

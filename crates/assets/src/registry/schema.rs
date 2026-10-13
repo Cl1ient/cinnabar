@@ -35,7 +35,8 @@ pub const COMPATIBILITY_REPLACEABLE_BLOCKS: &[&str] = &[
     "minecraft:nether_sprouts",
     "minecraft:hanging_roots",
 ];
-pub(super) const RECORD_HEADER_BYTES: usize = 73;
+/// The fixed record prefix size generated from the shared wire schema.
+pub const RECORD_HEADER_BYTES: usize = 73;
 pub(super) const MAX_REGISTRY_RECORDS: usize = 65536;
 pub(super) const MAX_REGISTRY_STATE_BYTES: usize = 1048576;
 pub(super) const MAX_COLLISION_BOXES: usize = 7;

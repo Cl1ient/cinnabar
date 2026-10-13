@@ -108,12 +108,19 @@ fn v2193_decoders_reject_trailing_truncated_and_malformed_carriers() {
             .try_into()
             .expect("state length"),
     ) as usize;
-    let second_prefix = first_prefix + 56 + box_count * 24 + name_len + state_len;
+    let second_prefix = first_prefix
+        + assets::registry::RECORD_HEADER_BYTES
+        + box_count * 24
+        + name_len
+        + state_len;
     let first_id: [u8; 4] = duplicate[first_prefix..first_prefix + 4]
         .try_into()
         .expect("first sequential ID");
     duplicate[second_prefix..second_prefix + 4].copy_from_slice(&first_id);
-    assert!(read_registry_for_protocol(&duplicate, 2193).is_err());
+    assert!(matches!(
+        read_registry_for_protocol(&duplicate, 2193),
+        Err(assets::AssetError::DuplicateSequentialId(id)) if id == u32::from_le_bytes(first_id)
+    ));
 
     let mut malformed_light = LREG.to_vec();
     malformed_light[48] ^= 1;

@@ -4,8 +4,8 @@ use ::image::{ImageFormat, ImageReader};
 use assets::{
     parse_skin_geometry,
     starter_skins::{
-        CLASSIC_SKIN_GEOMETRY, MAX_STARTER_SKIN_GEOMETRY_BYTES, SLIM_SKIN_GEOMETRY,
-        STARTER_SKIN_SIDE, STARTER_SKIN_SOURCES, StarterSkin, StarterSkins, encode_starter_skins,
+        MAX_STARTER_SKIN_GEOMETRY_BYTES, STARTER_SKIN_GEOMETRY_IDENTIFIERS, STARTER_SKIN_SIDE,
+        STARTER_SKIN_SOURCES, StarterSkin, StarterSkins, encode_starter_skins,
     },
 };
 use serde_json::{Map, Value};
@@ -43,45 +43,23 @@ fn read_skin(path: &Path) -> Result<Box<[u8]>, String> {
     Ok(decoded.into_raw().into_boxed_slice())
 }
 
-/// Reduces selected model documents to the two skin models and any legacy parents.
-fn skin_geometry(models: &Map<String, Value>) -> Result<String, String> {
+/// Keeps a legacy model and its parents in one native-compatible document.
+fn skin_geometry(models: &Map<String, Value>, model: &str) -> Result<String, String> {
     let identifier = |key: &str| key.split_once(':').map_or(key, |(own, _)| own).to_owned();
     let mut kept = Map::new();
-    let mut modern = Vec::new();
-    for model in [CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY] {
-        let mut next = Some(model.to_owned());
-        let mut depth = 0;
-        while let Some(wanted) = next.take() {
-            depth += 1;
-            if depth > MAX_INHERITANCE_DEPTH {
-                return Err(format!("{model} inherits too deeply"));
-            }
-            if let Some(entry) = models
-                .get("minecraft:geometry")
-                .and_then(Value::as_array)
-                .and_then(|entries| {
-                    entries
-                        .iter()
-                        .find(|entry| entry["description"]["identifier"].as_str() == Some(&wanted))
-                })
-            {
-                if !modern.iter().any(|kept: &Value| {
-                    kept["description"]["identifier"] == entry["description"]["identifier"]
-                }) {
-                    modern.push(entry.clone());
-                }
-                continue;
-            }
-            let (key, value) = models
-                .iter()
-                .find(|(key, _)| identifier(key) == wanted)
-                .ok_or_else(|| format!("{MODELS} has no {wanted}"))?;
-            kept.insert(key.clone(), value.clone());
-            next = key.split_once(':').map(|(_, parent)| parent.to_owned());
+    let mut next = Some(model.to_owned());
+    let mut depth = 0;
+    while let Some(wanted) = next.take() {
+        depth += 1;
+        if depth > MAX_INHERITANCE_DEPTH {
+            return Err(format!("{model} inherits too deeply"));
         }
-    }
-    if !modern.is_empty() {
-        kept.insert("minecraft:geometry".to_owned(), Value::Array(modern));
+        let (key, value) = models
+            .iter()
+            .find(|(key, _)| identifier(key) == wanted)
+            .ok_or_else(|| format!("{MODELS} has no {wanted}"))?;
+        kept.insert(key.clone(), value.clone());
+        next = key.split_once(':').map(|(_, parent)| parent.to_owned());
     }
     if let Some(version) = models.get("format_version") {
         kept.insert("format_version".to_owned(), version.clone());
@@ -92,18 +70,18 @@ fn skin_geometry(models: &Map<String, Value>) -> Result<String, String> {
             "skin geometry exceeds {MAX_STARTER_SKIN_GEOMETRY_BYTES} bytes"
         ));
     }
-    for model in [CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY] {
-        let patch = serde_json::json!({ "geometry": { "default": model } }).to_string();
-        match parse_skin_geometry(&patch, &geometry) {
-            Ok(Some(_)) => {}
-            _ => return Err(format!("{model} does not resolve as skin geometry")),
-        }
+    let patch = serde_json::json!({ "geometry": { "default": model } }).to_string();
+    match parse_skin_geometry(&patch, &geometry) {
+        Ok(Some(_)) => {}
+        _ => return Err(format!("{model} does not resolve as skin geometry")),
     }
     Ok(geometry)
 }
 
 /// Uses the entity compiler's identifier selection, with standalone models above legacy models.
-fn pack_skin_geometry(pack: &Path) -> Result<String, String> {
+fn pack_skin_geometry(
+    pack: &Path,
+) -> Result<[Box<str>; STARTER_SKIN_GEOMETRY_IDENTIFIERS.len()], String> {
     let mut documents = Vec::new();
     let legacy = pack.join(MODELS);
     if legacy.is_file() {
@@ -121,15 +99,40 @@ fn pack_skin_geometry(pack: &Path) -> Result<String, String> {
         let mut document: Map<String, Value> =
             pack_json::parse_jsonc(&bytes).map_err(|error| error.to_string())?;
         if let Some(Value::Array(entries)) = document.remove("minecraft:geometry") {
-            modern.extend(entries);
+            for entry in entries.into_iter().filter(|entry| {
+                entry["description"]["identifier"]
+                    .as_str()
+                    .is_some_and(|id| STARTER_SKIN_GEOMETRY_IDENTIFIERS.contains(&id))
+            }) {
+                let mut source = document.clone();
+                source.insert(
+                    "minecraft:geometry".to_owned(),
+                    Value::Array(vec![entry.clone()]),
+                );
+                modern.push((entry, source));
+            }
         } else {
             models.extend(document);
         }
     }
-    if !modern.is_empty() {
-        models.insert("minecraft:geometry".to_owned(), Value::Array(modern));
-    }
-    skin_geometry(&models)
+    let geometries = STARTER_SKIN_GEOMETRY_IDENTIFIERS
+        .iter()
+        .map(|model| {
+            let geometry = match modern
+                .iter()
+                .find(|(entry, _)| entry["description"]["identifier"].as_str() == Some(*model))
+            {
+                Some((_, source)) => Value::Object(source.clone()).to_string(),
+                None => skin_geometry(&models, model)?,
+            };
+            let patch = serde_json::json!({"geometry":{"default":model}}).to_string();
+            parse_skin_geometry(&patch, &geometry)
+                .map_err(|error| format!("{model}: {error:?}"))?
+                .ok_or_else(|| format!("{model} does not resolve as skin geometry"))?;
+            Ok(geometry.into_boxed_str())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(geometries.try_into().expect("one document per model"))
 }
 
 /// Reads the starter skins and humanoid skin models from `pack` and encodes the MCBESKN1 carrier.
@@ -145,7 +148,7 @@ pub fn compile_starter_skins(pack: &Path) -> Result<Vec<u8>, String> {
         })
         .collect::<Result<_, String>>()?;
     let carrier = StarterSkins {
-        geometry: pack_skin_geometry(pack)?.into(),
+        geometries: pack_skin_geometry(pack)?,
         skins,
     };
     encode_starter_skins(&carrier).map_err(|error| error.to_string())
@@ -162,6 +165,7 @@ pub fn compile_starter_skins_to_file(pack: &Path, out: &Path) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assets::starter_skins::{CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY};
 
     fn cube_model() -> Value {
         serde_json::json!({
@@ -180,7 +184,7 @@ mod tests {
             "geometry.humanoid.customSlim": cube_model(),
             "geometry.zombie": cube_model(),
         });
-        let geometry = skin_geometry(models.as_object().unwrap()).unwrap();
+        let geometry = skin_geometry(models.as_object().unwrap(), CLASSIC_SKIN_GEOMETRY).unwrap();
         let kept: Map<String, Value> = serde_json::from_str(&geometry).unwrap();
         let mut keys: Vec<_> = kept.keys().map(String::as_str).collect();
         keys.sort_unstable();
@@ -190,7 +194,6 @@ mod tests {
                 "format_version",
                 "geometry.humanoid",
                 "geometry.humanoid.custom:geometry.humanoid",
-                "geometry.humanoid.customSlim",
             ]
         );
     }
@@ -201,7 +204,7 @@ mod tests {
             "format_version": "1.8.0",
             "geometry.humanoid.custom": cube_model(),
         });
-        assert!(skin_geometry(models.as_object().unwrap()).is_err());
+        assert!(skin_geometry(models.as_object().unwrap(), SLIM_SKIN_GEOMETRY).is_err());
     }
 
     #[test]
@@ -220,7 +223,7 @@ mod tests {
         let modern = serde_json::json!({
             "format_version":"1.12.0",
             "minecraft:geometry":[{
-                "description":{"identifier":CLASSIC_SKIN_GEOMETRY,"texture_width":64,"texture_height":64},
+                "description":{"identifier":CLASSIC_SKIN_GEOMETRY,"texture_width":STARTER_SKIN_SIDE,"texture_height":STARTER_SKIN_SIDE},
                 "bones":[{"name":"body","cubes":[{
                     "origin":[-4,12,-2],"size":[8,12,4],"uv":[32,32],"inflate":0.25
                 }]}]
@@ -232,15 +235,25 @@ mod tests {
         )
         .unwrap();
         for skin in STARTER_SKIN_SOURCES {
-            ::image::RgbaImage::from_pixel(64, 64, ::image::Rgba([33, 177, 91, 255]))
-                .save(pack.join(skin.texture))
-                .unwrap();
+            ::image::RgbaImage::from_pixel(
+                STARTER_SKIN_SIDE,
+                STARTER_SKIN_SIDE,
+                ::image::Rgba([33, 177, 91, 255]),
+            )
+            .save(pack.join(skin.texture))
+            .unwrap();
         }
         let carrier =
             assets::starter_skins::decode_starter_skins(&compile_starter_skins(pack).unwrap())
                 .unwrap();
         let patch = serde_json::json!({"geometry":{"default":CLASSIC_SKIN_GEOMETRY}}).to_string();
-        let model = parse_skin_geometry(&patch, &carrier.geometry)
+        let classic: Value = serde_json::from_str(&carrier.geometries[0]).unwrap();
+        assert_eq!(classic["format_version"], "1.12.0");
+        assert!(classic.get(CLASSIC_SKIN_GEOMETRY).is_none());
+        let slim: Value = serde_json::from_str(&carrier.geometries[1]).unwrap();
+        assert_eq!(slim["format_version"], "1.8.0");
+        assert!(slim.get("minecraft:geometry").is_none());
+        let model = parse_skin_geometry(&patch, &carrier.geometries[0])
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -255,7 +268,7 @@ mod tests {
         );
         let patch = serde_json::json!({"geometry":{"default":SLIM_SKIN_GEOMETRY}}).to_string();
         assert!(
-            parse_skin_geometry(&patch, &carrier.geometry)
+            parse_skin_geometry(&patch, &carrier.geometries[1])
                 .unwrap()
                 .is_some()
         );
@@ -274,7 +287,7 @@ mod tests {
             (CLASSIC_SKIN_GEOMETRY.to_owned(), model),
             (SLIM_SKIN_GEOMETRY.to_owned(), cube_model()),
         ]);
-        let data = skin_geometry(&models).unwrap();
+        let data = skin_geometry(&models, CLASSIC_SKIN_GEOMETRY).unwrap();
         let patch = serde_json::json!({"geometry":{"default":CLASSIC_SKIN_GEOMETRY}}).to_string();
         let geometry = parse_skin_geometry(&patch, &data).unwrap().unwrap();
         let cubes = &geometry.bones[0].cubes;

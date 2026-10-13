@@ -45,9 +45,11 @@ pub(super) fn native_fixture(layout: &InstallLayout) {
     }));
     let side = assets::starter_skins::STARTER_SKIN_SIDE as usize;
     let carrier = assets::starter_skins::StarterSkins {
-        geometry: serde_json::json!({"format_version":"1.12.0","minecraft:geometry":models})
-            .to_string()
-            .into(),
+        geometries: models.map(|model| {
+            serde_json::json!({"format_version":"1.12.0","minecraft:geometry":[model]})
+                .to_string()
+                .into()
+        }),
         skins: assets::starter_skins::STARTER_SKIN_SOURCES
             .iter()
             .zip([[255, 0, 0, 255], [0, 0, 255, 255]])
@@ -81,11 +83,66 @@ fn native_roster_uses_declared_models_and_matches_existing_default_without_dupli
     );
     assert_eq!(view.selected, Some(0));
     assert_eq!(view.skins[1].model, SkinModel::Slim);
-    assert!(Arc::ptr_eq(
-        &view.skins[0].skin.geometry.as_ref().unwrap().geometry_data,
-        &view.skins[1].skin.geometry.as_ref().unwrap().geometry_data
-    ));
+    for entry in view.skins.iter() {
+        let source = entry.skin.geometry.as_ref().unwrap();
+        let document: serde_json::Value = serde_json::from_str(&source.geometry_data).unwrap();
+        assert_eq!(document["format_version"], "1.12.0");
+        assert_eq!(document["minecraft:geometry"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            document["minecraft:geometry"][0]["description"]["identifier"],
+            entry.model.geometry()
+        );
+    }
     assert!(view.skins.iter().all(|skin| !skin.imported));
+}
+
+#[test]
+fn starter_skin_updates_keep_each_models_native_geometry_schema() {
+    let layout = layout();
+    native_fixture(&layout);
+    let path = layout.starter_skins_asset();
+    let mut carrier =
+        assets::starter_skins::decode_starter_skins(&fs::read(&path).unwrap()).unwrap();
+    let legacy = serde_json::Map::from_iter([
+        ("format_version".to_owned(), serde_json::json!("1.8.0")),
+        (
+            SkinModel::Slim.geometry().to_owned(),
+            serde_json::json!({
+            "texturewidth":render_api::CLASSIC_SKIN_SIDE,"textureheight":render_api::CLASSIC_SKIN_SIDE,
+                "bones":[{"name":"body","cubes":[{"origin":[-4,12,-2],"size":[8,12,4],"uv":[16,16]}]}]
+            }),
+        ),
+    ]);
+    carrier.geometries[1] = serde_json::Value::Object(legacy).to_string().into();
+    fs::write(
+        &path,
+        assets::starter_skins::encode_starter_skins(&carrier).unwrap(),
+    )
+    .unwrap();
+    let fallback = LocalPlayerSkin::generated_default("fixture");
+    let view = load(&layout, &fallback);
+    for entry in view.skins.iter().take(carrier.skins.len()) {
+        let mut local = fallback.clone();
+        local.set_selection(&entry.skin, entry.model);
+        let source = local.to_client_skin().geometry.unwrap().geometry_data;
+        let document: serde_json::Value = serde_json::from_str(&source).unwrap();
+        match entry.model {
+            SkinModel::Classic => {
+                assert_eq!(document["format_version"], "1.12.0");
+                assert_eq!(
+                    document["minecraft:geometry"][0]["description"]["identifier"],
+                    entry.model.geometry()
+                );
+                assert!(document.get(SkinModel::Slim.geometry()).is_none());
+            }
+            SkinModel::Slim => {
+                assert_eq!(document["format_version"], "1.8.0");
+                assert!(document.get(entry.model.geometry()).is_some());
+                assert!(document.get("minecraft:geometry").is_none());
+            }
+            SkinModel::Custom => panic!("starter models have fixed arm widths"),
+        }
+    }
 }
 
 #[test]

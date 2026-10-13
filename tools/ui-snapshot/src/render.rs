@@ -156,22 +156,27 @@ pub fn png(state: &State, dir: &Path) -> Result<Vec<u8>, Error> {
             editor.set_text(draft);
             frame.now = CAPTURE_SECONDS;
             let mut screen = ChatScreen::default();
-            screen
-                .paint(
-                    &engine,
-                    ChatInput {
-                        editor: &editor,
-                        messages: &Default::default(),
-                        suggestions: &suggestions,
-                        usage: None,
-                        selected_suggestion: Some(0),
-                        annotations: &[],
-                        clocks: &Default::default(),
-                        now_millis: (CAPTURE_SECONDS * 1000.0) as u64,
-                    },
-                    &mut frame,
-                )
-                .map_err(|error| error.to_string())?;
+            for now in [0.0, CAPTURE_SECONDS] {
+                frame.nodes.clear();
+                *frame.next = 1;
+                frame.now = now;
+                screen
+                    .paint(
+                        &engine,
+                        ChatInput {
+                            editor: &editor,
+                            messages: &Default::default(),
+                            suggestions: &suggestions,
+                            usage: None,
+                            selected_suggestion: Some(0),
+                            annotations: &[],
+                            clocks: &Default::default(),
+                            now_millis: (now * 1000.0) as u64,
+                        },
+                        &mut frame,
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
             if screen.nodes().is_empty() {
                 return Err(Error::Invalid("native chat screen did not resolve".into()));
             }

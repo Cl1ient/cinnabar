@@ -127,9 +127,11 @@ pub const MATERIAL_FLAGS_MASK: u32 = MATERIAL_FLAG_UV_MASK
     | crate::stem::MATERIAL_FLAG
     | crate::stem::GROWTH_MASK;
 
+// Every flag bit is assigned, so validity depends only on the combination rules below.
+const _: () = assert!(MATERIAL_FLAGS_MASK == u32::MAX);
+
 pub(crate) const fn material_flags_are_valid(flags: u32) -> bool {
-    flags & !MATERIAL_FLAGS_MASK == 0
-        && (flags & crate::stem::GROWTH_MASK == 0 || flags & crate::stem::MATERIAL_FLAG != 0)
+    (flags & crate::stem::GROWTH_MASK == 0 || flags & crate::stem::MATERIAL_FLAG != 0)
         && (flags & crate::stem::MATERIAL_FLAG == 0
             || flags
                 & (MATERIAL_FLAG_TINT_MASK

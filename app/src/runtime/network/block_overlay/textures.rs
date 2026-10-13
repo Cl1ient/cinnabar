@@ -11,7 +11,9 @@ mod diagnostics;
 mod terrain;
 pub(super) use carrier::carrier_image;
 use diagnostics::{FailureReason, TextureDiagnostics};
-use pack_runtime::pack_textures::{MAX_CATALOG_ENTRIES, decode_pack_texture, parse_pack_json};
+use pack_runtime::pack_textures::{
+    MAX_CATALOG_ENTRIES, decode_pack_texture_with_policy, parse_pack_json,
+};
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -186,17 +188,22 @@ impl<'a> TextureCatalog<'a> {
                 .failure(FailureReason::TerrainKeyMissing, key, None);
             return None;
         };
-        let mut image = decode_pack_texture(self.view, &choice.path)
-            .map(|texture| TextureImage {
-                texture,
-                baked_tint: None,
-                animation: None,
-            })
-            .or_else(|| {
-                texture_image_paths(&choice.path)
-                    .into_iter()
-                    .find_map(|path| carrier(&path, choice.tint))
-            });
+        let mut image = decode_pack_texture_with_policy(
+            self.view,
+            &choice.path,
+            assets::texture::policy::device_policy(),
+            true,
+        )
+        .map(|texture| TextureImage {
+            texture,
+            baked_tint: None,
+            animation: None,
+        })
+        .or_else(|| {
+            texture_image_paths(&choice.path)
+                .into_iter()
+                .find_map(|path| carrier(&path, choice.tint))
+        });
         if let Some(image) = image.as_mut()
             && image.baked_tint.is_none()
             && let Some(tint) = choice.tint
@@ -216,6 +223,12 @@ impl<'a> TextureCatalog<'a> {
     pub(super) fn report_full(&self, key: &str) {
         self.diagnostics
             .failure(FailureReason::TextureArrayFull, key, None);
+    }
+
+    /// Names a route whose full-resolution storage would exceed the page budget.
+    pub(super) fn report_budget(&self, key: &str) {
+        self.diagnostics
+            .failure(FailureReason::TextureBudgetExceeded, key, None);
     }
 
     /// Emits the counted terrain failures for this stack.

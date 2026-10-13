@@ -33,20 +33,16 @@ use self::{
     geometry::{FACE_NAMES, FaceQuad, Geometry},
     geometry_inputs::geometry_catalog,
     textures::{
-        Flipbook, TextureCatalog, admit_static_rectangle, flipbook_frames, shrink_to_max,
-        source_mip_chain,
+        Flipbook, TextureCatalog, admit_static_rectangle, flipbook_frames, source_mip_chain,
     },
 };
+use assets::texture::policy::{MAX_SUBSCRIBER_BYTES, TexturePolicy, device_policy};
 use pack_runtime::pack_textures::DecodedTexture;
 
 const FULL_BLOCK: &str = "minecraft:geometry.full_block";
 const FULL_BLOCK_V1: &str = "minecraft:geometry.full_block_v1";
 const MIN_TILE: u32 = assets::TILE_SIZE;
-const MAX_TILE: u32 = 128;
 const MAX_OVERLAY_LAYERS: usize = assets::MAX_TEXTURE_LAYERS;
-const MAX_OVERLAY_TEXTURE_BYTES: usize = 64 * 1024 * 1024;
-// Held decoded sources are already shrunk to MAX_TILE; bound their total too.
-const MAX_OVERLAY_SOURCE_BYTES: usize = 64 * 1024 * 1024;
 const DIAGNOSTIC_MATERIAL: u32 = 0;
 
 /// Counted reasons some server block visuals are incomplete this session.
@@ -117,6 +113,8 @@ pub(super) fn compile_block_overlay(
         overlay: BlockOverlay::default(),
         sources: Vec::new(),
         source_bytes: 0,
+        tile_size: MIN_TILE,
+        texture_policy: device_policy(),
         max_layers: (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS),
         textures: HashMap::new(),
         materials: HashMap::new(),
@@ -236,6 +234,8 @@ struct Builder<'a> {
     overlay: BlockOverlay,
     sources: Vec<Source>,
     source_bytes: usize,
+    tile_size: u32,
+    texture_policy: TexturePolicy,
     max_layers: usize,
     textures: HashMap<TextureRoute, Option<TextureSlot>>,
     materials: HashMap<(String, u32), u32>,
@@ -568,15 +568,44 @@ impl Builder<'_> {
                 blend: animation.flags & assets::ANIMATION_FLAG_BLEND != 0,
             })
         });
-        // Bound frame count before cutting copies, and shrink each to MAX_TILE.
-        let frames = match flipbook.as_ref() {
-            Some(flipbook) => flipbook_frames(&texture, flipbook, available.min(256), MAX_TILE),
-            None => {
-                admit_static_rectangle(&mut texture);
-                vec![shrink_to_max(&texture, MAX_TILE)]
-            }
+        if flipbook.is_none() {
+            admit_static_rectangle(&mut texture);
+        }
+        let frame_height =
+            if texture.height > texture.width && texture.height.is_multiple_of(texture.width) {
+                texture.width
+            } else {
+                texture.height
+            };
+        let tile = texture
+            .width
+            .max(frame_height)
+            .checked_next_power_of_two()?
+            .max(self.tile_size);
+        let Some(layer_bytes) = self.texture_policy.terrain_bytes(tile, 1) else {
+            self.catalog.report_budget(key);
+            return None;
         };
-        drop(texture);
+        let frame_bytes = self
+            .texture_policy
+            .source_bytes(texture.width, frame_height, false)?;
+        let available = available
+            .min((MAX_SUBSCRIBER_BYTES / layer_bytes).saturating_sub(self.sources.len()))
+            .min(MAX_SUBSCRIBER_BYTES.saturating_sub(self.source_bytes) / frame_bytes);
+        if available == 0 {
+            self.catalog.report_budget(key);
+            return None;
+        }
+        // Bound full-resolution frame copies before allocating them.
+        let frames = match flipbook.as_ref() {
+            Some(flipbook) => flipbook_frames(
+                &texture,
+                flipbook,
+                available.min(256),
+                self.texture_policy.max_side(),
+            ),
+            None => vec![texture],
+        };
         if frames
             .iter()
             .any(|frame| frame.width >> grid == 0 || frame.height >> grid == 0)
@@ -584,9 +613,10 @@ impl Builder<'_> {
             return None;
         }
         let added_bytes: usize = frames.iter().map(|frame| frame.rgba8.len()).sum();
-        if frames.is_empty() || self.source_bytes + added_bytes > MAX_OVERLAY_SOURCE_BYTES {
+        if frames.is_empty() || self.source_bytes + added_bytes > MAX_SUBSCRIBER_BYTES {
             return None;
         }
+        self.tile_size = tile;
         self.source_bytes += added_bytes;
         let first = self.sources.len() as u32;
         let frame_count = frames.len() as u32;
@@ -648,12 +678,9 @@ impl Builder<'_> {
             })
             .max()
             .unwrap_or(MIN_TILE);
-        let mut tile = largest.next_power_of_two().clamp(MIN_TILE, MAX_TILE);
-        // A full mip chain costs about 4/3 of its base level.
-        let page_bytes = |tile: u32| self.sources.len() * (tile * tile) as usize * 16 / 3;
-        while tile > MIN_TILE && page_bytes(tile) > MAX_OVERLAY_TEXTURE_BYTES {
-            tile /= 2;
-        }
+        let tile = largest.checked_next_power_of_two()?.max(MIN_TILE);
+        self.texture_policy
+            .terrain_bytes(tile, self.sources.len())?;
         let mut mips: Vec<Vec<u8>> = Vec::new();
         for source in &self.sources {
             let (dimensions, chain) = match source {

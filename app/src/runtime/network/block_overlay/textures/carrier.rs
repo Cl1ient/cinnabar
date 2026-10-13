@@ -45,7 +45,7 @@ pub(in super::super) fn carrier_image(
         }
         side = Some(mip.size);
         let bytes = (mip.size * mip.size * 4) as usize;
-        if rgba8.len() + bytes > super::super::MAX_OVERLAY_SOURCE_BYTES {
+        if rgba8.len() + bytes > super::super::MAX_SUBSCRIBER_BYTES {
             return None;
         }
         let start = reference.layer() as usize * bytes;

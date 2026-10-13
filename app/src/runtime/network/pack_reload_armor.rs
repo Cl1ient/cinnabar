@@ -560,12 +560,14 @@ fn mixed_texture_and_material_reload_disables_authored_armour_dye() {
         worn_pixel(&mut runtime, &body, &equipped, &pages),
         [40, 50, 60, 255]
     );
-    assert_eq!(
-        runtime.layers_for(&body, &equipped, None)[0]
-            .submission
-            .tint,
-        0
-    );
+    for profile in [
+        render_api::CombatVisuals::Modern,
+        render_api::CombatVisuals::Legacy112,
+    ] {
+        let layers = runtime.layers_for_profile(&body, &equipped, profile, None);
+        assert_eq!(layers[0].submission.tint, 0);
+        assert!(!layers[0].submission.material.color_mask);
+    }
     runtime.set_pack_layer(None);
     assert_ne!(
         runtime.layers_for(&body, &equipped, None)[0]

@@ -223,8 +223,10 @@ impl WorldStream {
     /// player's. A server granting less never shrinks the player's view of what it does send, and
     /// one granting more keeps every column it still considers sent, so none goes missing.
     pub(super) fn retained_radius(&self) -> Option<i32> {
-        self.chunk_radius
-            .map(|server| self.requested_radius.map_or(server, |player| server.max(player)))
+        self.chunk_radius.map(|server| {
+            self.requested_radius
+                .map_or(server, |player| server.max(player))
+        })
     }
 
     /// Re-evaluates chunk-grid retention against the local player's current

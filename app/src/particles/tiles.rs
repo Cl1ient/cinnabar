@@ -1,8 +1,11 @@
 use assets::{MATERIAL_FLAG_TINT_MASK, NetworkIdMode};
 use chunk_pipeline::WorldStream;
-use particles::{TileRequest, tiles::material_tint};
+use particles::{
+    TileRequest,
+    tiles::{material_stage_tint, material_tint},
+};
 
-/// A block-textured particle tile with its gamma-space biome tint.
+/// A block-textured particle tile with its gamma-space material tint.
 pub(super) struct BlockTile {
     pub(super) tile: TileRequest,
     pub(super) tint: [f32; 4],
@@ -21,8 +24,11 @@ pub(super) fn block_tile(
     })
 }
 
-/// Gamma-space biome colour at `block` for a material's tint mode; white when untinted.
+/// Resolves stage colour before consulting the biome at `block`; white when untinted.
 pub(super) fn biome_tint(stream: &WorldStream, flags: u32, block: [i32; 3]) -> [f32; 4] {
+    if let Some(tint) = material_stage_tint(flags) {
+        return tint;
+    }
     if flags & MATERIAL_FLAG_TINT_MASK == 0 {
         return [1.0; 4];
     }

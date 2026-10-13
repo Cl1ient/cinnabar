@@ -240,11 +240,12 @@ fn legacy_attack_targets_preserve_custom_skin_and_persona_geometry() {
         bones: &state.bones,
         bone_names: &state.bone_names,
     };
-    let layers = skin_layers::evaluate(state, &evaluator, &layout.fresh(1), &local, None);
+    let layers = skin_layers::evaluate(state, &evaluator, &layout.fresh(1), (&local, None), None);
     assert_eq!(layers.len(), 1);
     let layer = &prepared.layers[0];
     let baseline = compose_pose(&layer.bones, &[]).unwrap();
     assert_custom_attack(&layers[0].current, &baseline, &layer.names);
+    assert_eq!(layers[0].previous, layers[0].current);
 }
 
 /// Checks attack deltas relative to each destination's own pivots and authored orientation.

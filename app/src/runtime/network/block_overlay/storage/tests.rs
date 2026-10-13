@@ -256,6 +256,7 @@ fn resolved_animation_aliases_reuse_frames_at_capacity_with_independent_timing()
     let first = builder.texture_slot_for("tile", (0, 0)).unwrap();
     let second = builder.texture_slot_for("tile", (1, 0)).unwrap();
     assert_eq!(builder.sources.len(), 2);
+    assert_eq!(builder.catalog.decode_attempts.get(), 1);
     assert_eq!(first.layer, second.layer);
     assert_ne!(first.animation, second.animation);
     assert_eq!(builder.overlay.animation_frames.len(), 2);

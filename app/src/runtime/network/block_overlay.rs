@@ -35,7 +35,7 @@ use self::{
     condition::StateVisual,
     geometry::{FACE_NAMES, FaceQuad, Geometry},
     geometry_inputs::geometry_catalog,
-    textures::{TextureCatalog, source_mip_chain},
+    textures::{TextureCatalog, admit_static_rectangle, source_mip_chain},
 };
 use assets::texture::policy::{TexturePolicy, device_policy};
 use pack_runtime::pack_textures::DecodedTexture;
@@ -214,6 +214,7 @@ enum TextureRoute {
         key: String,
         variant: u32,
         path: String,
+        choice: u32,
     },
 }
 

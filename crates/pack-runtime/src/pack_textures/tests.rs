@@ -120,3 +120,29 @@ fn resolved_images_keep_the_filename_selected_after_decode_and_texture_set_fallb
     assert_eq!(solid.image_path, "textures/solid.texture_set.json");
     assert_eq!(&solid.texture.rgba8[..], &[1, 2, 3, 255]);
 }
+
+#[test]
+fn indexed_alias_candidates_preserve_precedence_without_reading_image_payloads() {
+    let stack = crate::test_support::stack(&[
+        ("textures/shared.png", b"metadata only"),
+        ("textures/shared.tga", b"metadata only"),
+        (
+            "textures/alias.texture_set.json",
+            br#"{"minecraft:texture_set":{"color":"shared"}}"#,
+        ),
+    ]);
+    let view = LayeredPackView::tracked(stack);
+    for path in ["textures/shared", "./textures/shared.PNG", "textures/alias"] {
+        assert_eq!(
+            indexed_image_candidate(&view, path).as_deref(),
+            Some("textures/shared.png")
+        );
+    }
+    assert_eq!(indexed_image_candidate(&view, "textures/uncached"), None);
+    let dependencies = view.dependencies().unwrap().snapshot();
+    assert!(!dependencies.iter().any(|dependency| matches!(dependency,
+        resource_pack::PackDependency::File { path, limit }
+            if (path.ends_with(".png") || path.ends_with(".tga"))
+                && *limit == resource_pack::MAX_PACK_TEXTURE_BYTES
+    )));
+}

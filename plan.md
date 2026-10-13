@@ -1,7 +1,9 @@
 ## Runtime terrain bindings
 
 Optional terrain catalogs retain each material's source key, state variant, tint, and
-independent weighted choices. Raster-only layers preserve base weighted selectors. Block texture bindings
+independent weighted choices. Raster-only layers refresh selector representatives while
+preserving base variation ranges and leaf weights. Retained choice indices distinguish
+repeated raster paths for flipbook updates. Block texture bindings
 repoint only plain full-cube world faces with one-to-one source mappings and prepare
 separate carried cube icons and held-item sheets. Carried-only texture changes also
 prepare art for eligible cubes. The material sidecar retains source facts and cube
@@ -16,7 +18,8 @@ Repeated catalog states and cube bindings keep base references when their raster
 changed choices still use carrier fallback. Specialized material sources retain their selected
 catalog keys and variant indices.
 Raster reuse follows the resolved image filename while preserving tint, grid and flipbook
-policies. Block icon baking runs only when the icon subscriber recompiles.
+policies. Full arrays check indexed aliases for reuse before reading any new image payload.
+Block icon baking runs only when the icon subscriber recompiles.
 
 Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
 blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,

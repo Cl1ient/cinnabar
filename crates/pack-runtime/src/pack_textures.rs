@@ -10,6 +10,7 @@ use std::{collections::HashMap, io::Cursor};
 mod catalog;
 mod decoded;
 use catalog::first_texture_path;
+pub use catalog::indexed_image_candidate;
 pub mod terrain;
 
 const MAX_TEXTURE_SOURCE_BYTES: usize = resource_pack::MAX_PACK_TEXTURE_BYTES as usize;

@@ -196,15 +196,25 @@ impl<'a> TextureCatalog<'a> {
             super::TextureRoute::Catalog {
                 variant, choice, ..
             } => (entry.resolved_variant(*variant), *choice as usize),
-            super::TextureRoute::Path { variant, path, .. } => {
-                let paths = texture_image_paths(path);
+            super::TextureRoute::Path {
+                variant,
+                path,
+                choice,
+                ..
+            } => {
                 let variant = entry.resolved_variant(*variant);
-                let choice = entry.variant(variant).iter().position(|choice| {
-                    texture_image_paths(&choice.path)
-                        .iter()
-                        .any(|path| paths.contains(path))
-                })?;
-                (variant, choice)
+                let selected = entry
+                    .variant(variant)
+                    .get(*choice as usize)
+                    .or_else(|| entry.variant(variant).first())?;
+                let paths = texture_image_paths(path);
+                if !texture_image_paths(&selected.path)
+                    .iter()
+                    .any(|path| paths.contains(path))
+                {
+                    return None;
+                }
+                (variant, *choice as usize)
             }
         };
         Some((

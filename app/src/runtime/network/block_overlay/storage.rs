@@ -65,6 +65,30 @@ impl Builder<'_> {
         if carrier_policy && let Some(storage) = self.slots.frames(&storage_key, true) {
             return storage.map(|storage| (storage, false));
         }
+        let available = self.max_layers.saturating_sub(self.sources.len());
+        if available == 0 {
+            for path in self
+                .catalog
+                .reusable_image_paths(route, source, carrier_policy)
+            {
+                let resolved_key = storage_key.clone().with_image(path);
+                if let Some(Some(storage)) = self.slots.frames(&resolved_key, false) {
+                    self.slots.insert_frames(storage_key, Some(storage), false);
+                    return Some((storage, true));
+                }
+                if carrier_policy
+                    && let Some(Some(storage)) = self.slots.frames(&resolved_key, true)
+                {
+                    self.slots.insert_frames(storage_key, Some(storage), true);
+                    return Some((storage, false));
+                }
+            }
+            if source.is_none() {
+                self.remaining_capacity(key);
+            }
+            self.slots.insert_frames(storage_key, None, carrier_policy);
+            return None;
+        }
         let Some(image) = self.catalog.decode_source(route, source, |path, tint| {
             super::textures::carrier_image(self.base_assets?, carrier?, path, tint)
         }) else {
@@ -76,15 +100,7 @@ impl Builder<'_> {
             self.slots.insert_frames(storage_key, storage, !image.pack);
             return storage.map(|storage| (storage, image.pack));
         }
-        let available = match source {
-            Some(_) => self.max_layers.saturating_sub(self.sources.len()),
-            None => self.remaining_capacity(key).unwrap_or(0),
-        };
-        let admission = if available > 0 {
-            self.store_frames(key, storage_key.grid, image.texture, source, available)
-        } else {
-            Err(AdmissionFailure::Source)
-        };
+        let admission = self.store_frames(key, storage_key.grid, image.texture, source, available);
         let storage = match admission {
             Err(AdmissionFailure::Timing) => return None,
             Ok(storage) => Some(storage),

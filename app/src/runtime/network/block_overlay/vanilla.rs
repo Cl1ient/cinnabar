@@ -43,9 +43,6 @@ impl Builder<'_> {
                     });
                 }
             } else {
-                if base.is_some_and(|material| material.variation_count != 0) {
-                    continue;
-                }
                 let route = source.map_or_else(
                     || TextureRoute::Catalog {
                         key: key.to_owned(),
@@ -56,6 +53,7 @@ impl Builder<'_> {
                         variant: source.variant,
                         key: key.to_owned(),
                         path: source.path.to_string(),
+                        choice: keys.flipbook_selector(id).1,
                     },
                 );
                 if let Some(slot) = self.route_slot(route) {

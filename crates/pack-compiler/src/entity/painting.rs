@@ -75,6 +75,13 @@ pub(super) fn complete_bindings(
             + entity.1.len()
             + geometry.1.len()
             + controller.as_ref().map_or(0, |(_, bytes)| bytes.len());
+        if remaining_budget.is_some()
+            && (geometries.len() >= assets::MAX_ENTITY_GEOMETRIES
+                || symbols.len() + 2 + usize::from(controller.is_some())
+                    > assets::MAX_ENTITY_ASSET_SYMBOLS)
+        {
+            continue;
+        }
         if remaining_budget.is_some_and(|(count, bytes)| next_sources > count || next_bytes > bytes)
         {
             continue;

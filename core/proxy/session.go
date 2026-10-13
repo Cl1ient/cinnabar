@@ -326,7 +326,8 @@ func selectSessionPacks(stack *selectedResourcePackStack, logger *slog.Logger) (
 	for _, entry := range stack.snapshot.Entries() {
 		entries = append(entries, sessionStackEntry{uuid: entry.UUID(), version: entry.Version(), subPack: entry.SubPackName()})
 	}
-	return chooseSessionPacks(offers, entries, stack.required, logger)
+	// Offer requirements govern acquisition; the stack's own bit governs selection.
+	return chooseSessionPacks(offers, entries, stack.snapshot.Required(), logger)
 }
 
 // sessionOffer is one offered pack with its acquired content.
@@ -343,7 +344,7 @@ type sessionStackEntry struct {
 // chooseSessionPacks selects archives in stack order: an offer repeating an identity keeps its first
 // entry, as vanilla requests each identity once; built-in packs need no archive; and an unavailable
 // pack, a repeated stack entry or a sub-pack that differs from the offer is skipped, or refuses the
-// join when the packs are required. A nil logger drops the skip count.
+// join when the stack is required. A nil logger drops the skip count.
 func chooseSessionPacks(offers []sessionOffer, entries []sessionStackEntry, required bool, logger *slog.Logger) ([]sessionPack, []*resource.Pack, error) {
 	refuse := &PackAdmissionError{Reason: PackAdmissionRequiredUnsupported, PackCount: len(offers)}
 	byIdentity := make(map[string]sessionOffer, len(offers))

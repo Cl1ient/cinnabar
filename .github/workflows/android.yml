@@ -49,6 +49,7 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
             "platforms;android-$(pin target_sdk)" "build-tools;$(pin build_tools)" "ndk;$(pin ndk)" >/dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$(pin ndk)" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$(pin ndk)" >> "$GITHUB_ENV"
           cargo install cargo-ndk --version "$(pin cargo_ndk)" --locked
       - name: Build the APK
         run: bash packaging/android/build-apk.sh

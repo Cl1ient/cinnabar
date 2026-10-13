@@ -3,9 +3,12 @@
 use super::*;
 
 /// Encodes an exact six-face model with original fractional-alpha textures and shared provenance.
-fn world(manifest: [u8; 32], height: u16, alpha: u8) -> RuntimeAssets {
+pub(super) fn world(manifest: [u8; 32], height: u16, alpha: u8) -> RuntimeAssets {
     use assets::*;
     let mut visual = BlockVisual::diagnostic(BlockFlags::empty(), ContributorRole::Primary);
+    if height == 256 {
+        visual.flags = BlockFlags::OCCLUDES_FULL_FACE;
+    }
     visual.kind = VisualKind::Model;
     visual.support = VisualSupport::Exact;
     visual.faces = [1; 6];

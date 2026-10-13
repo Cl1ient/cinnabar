@@ -180,7 +180,7 @@ impl<'a> Binder<'a> {
         let supplied = key.as_ref().and_then(|key| self.data.collections.get(key));
         let roles: Vec<Option<String>> = match node.native.collection_length.as_ref() {
             // A bound count takes each instance's role from its supplied item.
-            Some(length) => bound_roles(length, factory)
+            Some(length) => bound_roles(length)
                 .into_iter()
                 .enumerate()
                 .map(|(index, role)| role.or_else(|| supplied?.get(index)?.role.clone()))
@@ -284,8 +284,9 @@ pub(crate) const MAX_FACTORY_ITEMS: usize = 4096;
 
 /// Roles for a bound `#collection_length`: one per control id, or that many
 /// of a `control_name` template.
-fn bound_roles(length: &Value, factory: &Factory) -> Vec<Option<String>> {
-    let cap = factory.max_children_size.unwrap_or(MAX_FACTORY_ITEMS);
+fn bound_roles(length: &Value) -> Vec<Option<String>> {
+    // The factory evicts children after insertion, preserving the newest collection cursor.
+    let cap = MAX_FACTORY_ITEMS;
     match length {
         Value::Array(ids) => ids
             .iter()

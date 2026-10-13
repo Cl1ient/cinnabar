@@ -564,20 +564,21 @@ impl EquipmentRuntime {
             (arms.right && (is("rightArm") || is("rightSleeve")))
                 || (arms.left && (is("leftArm") || is("leftSleeve")))
         };
-        let mask = |pose: &[RenderBoneTransform]| {
-            pose.iter()
-                .zip(&bones.names)
-                .map(|(bone, name)| if visible(name) { *bone } else { hidden_bone() })
-                .collect::<Vec<_>>()
-        };
+        let poses = [&body.input.previous_bones, &body.input.current_bones];
+        let sampled = self.poses.sample_pair(
+            body,
+            FIRST_PERSON_MASK_LAYER,
+            pose_len,
+            |endpoint, index| {
+                Some(if visible(&bones.names[index]) {
+                    poses[endpoint][index]
+                } else {
+                    hidden_bone()
+                })
+            },
+        )?;
         let mut masked = body.clone();
-        let (previous, current) = (
-            mask(&body.input.previous_bones),
-            mask(&body.input.current_bones),
-        );
-        [masked.input.previous_bones, masked.input.current_bones] =
-            self.poses
-                .share(body, FIRST_PERSON_MASK_LAYER, [&previous, &current]);
+        [masked.input.previous_bones, masked.input.current_bones] = sampled;
         Some(masked)
     }
 

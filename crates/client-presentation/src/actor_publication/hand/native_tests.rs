@@ -810,14 +810,44 @@ fn legacy_bare_arm_reuses_its_rest_pose_without_sampling_or_allocating() {
     let allocations = test_alloc::thread_allocations();
     let retained = cache.native_pose.rest_pose(&rig).unwrap();
     assert_eq!(test_alloc::thread_allocations(), allocations);
-    assert!(Arc::ptr_eq(
-        &retained,
-        &source.body.as_ref().unwrap().input.previous_bones
-    ));
-    assert!(Arc::ptr_eq(
-        &retained,
-        &source.body.as_ref().unwrap().input.current_bones
-    ));
+    let arm = rig
+        .bone_names
+        .iter()
+        .position(|name| name.as_ref() == "rightarm")
+        .unwrap();
+    assert_eq!(
+        source.body.as_ref().unwrap().input.current_bones[arm],
+        retained[arm]
+    );
+    for alpha in [0.1, 0.9] {
+        equipment.begin_frame();
+        let inputs = HandInputs {
+            stream: &stream,
+            presentation: source.presentation.clone(),
+            equipment_input: &input,
+            owner_equipment: &input,
+            consume_ticks: None,
+            item_animation: None,
+            alpha,
+            artwork: &artwork,
+            motion: Mat4::IDENTITY,
+            sampling_camera: Some(([0.0; 2], [0.0; 3])),
+        };
+        let hand = hand_progress(rig.hand, None, alpha);
+        let allocations = test_alloc::thread_allocations();
+        let reused =
+            vanilla_hand_source(inputs, &mut equipment, hand, &mut cache.native_pose, false)
+                .unwrap();
+        assert_eq!(
+            test_alloc::thread_allocations(),
+            allocations,
+            "unchanged masked draws must not allocate"
+        );
+        let old = &source.body.as_ref().unwrap().input;
+        let new = &reused.body.as_ref().unwrap().input;
+        assert!(Arc::ptr_eq(&old.previous_bones, &new.previous_bones));
+        assert!(Arc::ptr_eq(&old.current_bones, &new.current_bones));
+    }
     assert_eq!(cache.native_pose.sample_work, (0, 0));
 }
 
@@ -841,6 +871,7 @@ fn legacy_empty_main_arm_and_native_offhand_keep_separate_pose_stacks() {
             kind: HeldKind::Sprite,
         });
         let mut cache = java::HandCache::default();
+        let mut masked_pose = None;
         for (physics_alpha, actor_alpha) in [(0.75, 0.1), (0.25, 0.9)] {
             stream.sync_local_swing(actor_animation::LocalSwingProgress {
                 bedrock: [0.25, 0.5],
@@ -864,7 +895,21 @@ fn legacy_empty_main_arm_and_native_offhand_keep_separate_pose_stacks() {
             assert!(source.body_camera.unwrap().abs_diff_eq(camera, 1e-5));
             let rest = cache.native_pose.rest_pose(&rig).unwrap();
             let body = source.body.as_ref().expect("empty right arm");
-            assert!(Arc::ptr_eq(&body.input.current_bones, &rest));
+            let arm = rig
+                .bone_names
+                .iter()
+                .position(|name| name.as_ref() == "rightarm")
+                .unwrap();
+            assert_eq!(body.input.previous_bones[arm], rest[arm]);
+            assert_eq!(body.input.current_bones[arm], rest[arm]);
+            if let Some([previous, current]) = masked_pose.as_ref() {
+                assert!(Arc::ptr_eq(previous, &body.input.previous_bones));
+                assert!(Arc::ptr_eq(current, &body.input.current_bones));
+            }
+            masked_pose = Some([
+                Arc::clone(&body.input.previous_bones),
+                Arc::clone(&body.input.current_bones),
+            ]);
             let left = rig
                 .bone_names
                 .iter()

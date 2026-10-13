@@ -84,7 +84,7 @@ pub(super) fn sample(
         swept.max.component_max(liquid_player.max),
     );
     crate::world::validate_collision_query(swept)?;
-    world.validate_movement_origin(position)?;
+    world.ensure_movement_origin(position)?;
     let min = block_at(swept.min)?;
     let max = inclusive_max_block_at(swept.max)?;
     let support = block_below(position)?;

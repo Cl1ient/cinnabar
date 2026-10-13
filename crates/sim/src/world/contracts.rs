@@ -7,15 +7,15 @@ use super::{
 };
 
 pub trait CollisionWorld {
+    /// Requires terrain at the movement origin before prediction or anchor recovery.
+    /// Worlds without streamed terrain need no availability check.
+    fn ensure_movement_origin(&self, _feet: Vec3) -> Result<(), WorldQueryError> {
+        Ok(())
+    }
+
     /// Registry provenance for ticks that read no terrain. Bare shape adapters remain neutral.
     fn registry_identity(&self) -> CollisionRegistryIdentity {
         CollisionQuery::synthetic(()).identity.registry
-    }
-
-    /// Requires terrain in the column containing the movement origin before prediction
-    /// or anchor recovery. Worlds without streamed terrain need no availability check.
-    fn validate_movement_origin(&self, _feet: Vec3) -> Result<(), WorldQueryError> {
-        Ok(())
     }
 
     /// Native liquid velocity impulse for the preceding collision pose. Worlds

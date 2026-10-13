@@ -45,13 +45,13 @@ impl CollisionSnapshot {
 }
 
 impl CollisionWorld for CollisionSnapshot {
-    fn registry_identity(&self) -> CollisionRegistryIdentity {
-        self.0.registry.identity()
+    /// Checks the origin against the terrain retained by the prediction frame.
+    fn ensure_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
+        self.world().ensure_movement_origin(feet)
     }
 
-    /// Checks the origin against the terrain retained by the prediction frame.
-    fn validate_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
-        self.world().validate_movement_origin(feet)
+    fn registry_identity(&self) -> CollisionRegistryIdentity {
+        self.0.registry.identity()
     }
 
     fn liquid_current(

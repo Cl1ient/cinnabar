@@ -755,19 +755,13 @@ impl<'a> PaletteWorld<'a> {
 }
 
 impl CollisionWorld for PaletteWorld<'_> {
-    fn registry_identity(&self) -> CollisionRegistryIdentity {
-        self.registry.identity()
+    /// Keeps absent-column material fallbacks confined to neighbouring travel regions.
+    fn ensure_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
+        self.require_movement_origin(feet)
     }
 
-    /// Keeps absent-column material fallbacks confined to neighbouring travel regions.
-    fn validate_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
-        validate_collision_query(Aabb::new(feet, feet))?;
-        let [x, _, z] = block_floor(feet)?;
-        let chunk = ChunkKey::new(self.dimension, x >> 4, z >> 4);
-        self.store
-            .collision_revision(chunk)
-            .ok_or(WorldQueryError::UnloadedChunk(chunk))
-            .map(|_| ())
+    fn registry_identity(&self) -> CollisionRegistryIdentity {
+        self.registry.identity()
     }
 
     fn liquid_current(

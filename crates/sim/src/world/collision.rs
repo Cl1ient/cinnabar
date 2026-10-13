@@ -6,6 +6,17 @@ const UNLOADED_BOUNDARY_REVISION: u64 = 0;
 const UNLOADED_BOUNDARY_VERTICAL_LIMIT: f64 = -(i32::MIN as f64) * 2.0;
 
 impl<'a> PaletteWorld<'a> {
+    /// Keeps anchors in absent terrain blocked until their own feet region arrives.
+    pub(super) fn require_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
+        validate_collision_query(Aabb::new(feet, feet))?;
+        let [x, y, z] = block_floor(feet)?;
+        let section = SubChunkKey::new(self.dimension, x >> 4, y >> 4, z >> 4);
+        if self.unloaded_collision_barriers && !self.store.is_sub_chunk_loaded(section) {
+            return Err(WorldQueryError::UnloadedChunk(section.chunk()));
+        }
+        Ok(())
+    }
+
     /// Borrows movement terrain with solid unloaded-column collision barriers.
     /// Prediction still waits for the column containing the player's feet.
     /// Partially received columns still require authoritative data for every queried section.
@@ -134,6 +145,19 @@ mod tests {
         let mut store = ChunkStore::new();
         store.mark_chunk_loaded(ChunkKey::new(0, 0, 0)).unwrap();
         (store, registry)
+    }
+
+    #[test]
+    fn unloaded_boundaries_block_travel_past_the_previous_vertical_limits() {
+        let (store, registry) = terrain();
+        let world = PaletteWorld::for_movement(&store, &registry, 0);
+        for y in [-100_002.0, 100_001.0] {
+            let query = Aabb::new(Vec3::new(15.5, y, 7.5), Vec3::new(16.5, y + 1.0, 8.5));
+            let boxes = world.collision_boxes(query).unwrap();
+            assert_eq!(boxes.value.len(), 1);
+            assert!(boxes.value[0].intersects(query));
+            assert!(world.block_physics([16, y as i32, 8]).is_ok());
+        }
     }
 
     #[test]

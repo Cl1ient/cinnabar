@@ -108,6 +108,55 @@ fn opaque_border_over_transparent_fill_never_interpolates_purple() {
     }
 }
 
+/// A square inner corner cannot spread its two-axis coverage across a curved ring's straight edge.
+#[test]
+fn straight_border_coverage_survives_a_square_inner_outline() {
+    for dpi in [1.0, 1.5, 2.0, 3.0] {
+        let size = [40.0 / dpi, 20.0 / dpi];
+        for border in [1.75, 1.875] {
+            let mesh = mesh(Key {
+                color: [0; 4],
+                end_color: [0; 4],
+                border_color: [255, 0, 0, 255],
+                ..key(
+                    size[0],
+                    size[1],
+                    1.75 / dpi,
+                    border / dpi,
+                    coverage_width(dpi),
+                )
+            })
+            .unwrap();
+            for distance in [1.5, 1.75, 2.0] {
+                let expected = (border - distance + 0.5_f32).clamp(0.0, 1.0);
+                for point in [
+                    [4.5, distance],
+                    [20.5, distance],
+                    [35.5, distance],
+                    [4.5, 20.0 - distance],
+                    [20.5, 20.0 - distance],
+                    [35.5, 20.0 - distance],
+                    [distance, 4.5],
+                    [distance, 10.5],
+                    [distance, 15.5],
+                    [40.0 - distance, 4.5],
+                    [40.0 - distance, 10.5],
+                    [40.0 - distance, 15.5],
+                ] {
+                    let color = sample_color(&mesh, size, point.map(|value| value / dpi));
+                    for (actual, expected) in color.into_iter().zip([expected, 0.0, 0.0, expected])
+                    {
+                        assert!(
+                            (actual - expected).abs() < 0.00001,
+                            "at {point:?}, DPI {dpi}, border {border}: {color:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Raster samples at fractional outlines retain partial coverage on squares, curves and hairlines.
 #[test]
 fn raster_samples_have_coverage_on_both_sides_of_authored_edges() {

@@ -43,7 +43,11 @@ fn apply_touch_events(
             }
             TouchPhase::Ended => {
                 state.move_to(id, position, 0);
-                lifted.extend(state.end(id));
+                if let Some(sample) = state.end(id) {
+                    // A reused id may lift twice in one frame; a frame carries each id once.
+                    lifted.retain(|earlier: &TouchContact| earlier.contact_id != id);
+                    lifted.push(sample);
+                }
             }
             TouchPhase::Canceled => state.release(id),
         }
@@ -183,6 +187,58 @@ mod tests {
             (held[0].contact_id, held[0].hit_id),
             (3, Some(touch::JOYSTICK))
         );
+    }
+
+    /// A reused id that lifts twice in one frame yields one sample, so the routed frame stays
+    /// valid and other fingers keep moving the player.
+    #[test]
+    fn a_reused_id_lifting_twice_still_routes_other_fingers() {
+        use semantic_input::{DeviceFrame, SemanticInputRouter};
+
+        let controls = |position: [f32; 2]| {
+            let (hit_id, min, max) = if position[0] < 0.5 {
+                (touch::JOYSTICK, [0.0, 0.0], [0.5, 1.0])
+            } else {
+                (touch::JUMP, [0.5, 0.0], [1.0, 1.0])
+            };
+            Some(TouchControlRegion {
+                hit_id,
+                bounds: TouchBounds { min, max },
+            })
+        };
+        let jump = [0.75, 0.5];
+        let mut state = TouchControlState::default();
+        apply_touch_events(
+            &mut state,
+            [
+                (9, TouchPhase::Started, [0.25, 0.5]),
+                (3, TouchPhase::Started, jump),
+            ],
+            controls,
+        )
+        .unwrap();
+        let lifted = apply_touch_events(
+            &mut state,
+            [
+                (3, TouchPhase::Ended, jump),
+                (3, TouchPhase::Started, jump),
+                (3, TouchPhase::Ended, jump),
+                (9, TouchPhase::Moved, [0.25, 0.0]),
+            ],
+            controls,
+        )
+        .unwrap();
+        assert_eq!(lifted.len(), 1);
+        let mut touches = state.sample();
+        touches.extend(lifted);
+        let mut router = SemanticInputRouter::default();
+        router
+            .route(DeviceFrame {
+                touches,
+                ..DeviceFrame::default()
+            })
+            .unwrap();
+        assert!(router.finalize().unwrap().movement[1] > 0.0);
     }
 
     /// Pause and inventory presses stop processing and open their screens.

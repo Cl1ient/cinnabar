@@ -317,7 +317,7 @@ fn starter(layout: &InstallLayout) -> Option<Starter> {
         })
         .and_then(|carrier| {
             Ok(Starter {
-                geometries: geometry_catalog(&carrier.geometries)?,
+                geometries: geometry_catalog(&carrier.geometry)?,
                 skins: carrier.skins,
             })
         });
@@ -368,21 +368,19 @@ fn geometry_for_view(
     geometry(layout, model)
 }
 
-fn geometry_catalog(
-    data: &[Box<str>; assets::starter_skins::STARTER_SKIN_GEOMETRY_IDENTIFIERS.len()],
-) -> Result<[Arc<render_api::SkinGeometrySource>; 2], String> {
+fn geometry_catalog(data: &str) -> Result<[Arc<render_api::SkinGeometrySource>; 2], String> {
+    if data.len() > render_api::MAX_SKIN_GEOMETRY_SOURCE_BYTES {
+        return Err("Skin geometry is too large.".to_owned());
+    }
+    let data: Arc<str> = data.into();
     let make = |model: SkinModel| -> Result<Arc<render_api::SkinGeometrySource>, String> {
-        let data = &data[usize::from(model == SkinModel::Slim)];
-        if data.len() > render_api::MAX_SKIN_GEOMETRY_SOURCE_BYTES {
-            return Err("Skin geometry is too large.".to_owned());
-        }
         let patch = serde_json::json!({"geometry":{"default":model.geometry()}}).to_string();
         assets::parse_skin_geometry(&patch, &data)
             .map_err(|error| format!("The skin model could not be read: {error:?}"))?
             .ok_or("The selected skin model is unavailable.")?;
         Ok(Arc::new(render_api::SkinGeometrySource {
             resource_patch: patch.into(),
-            geometry_data: Arc::from(data.as_ref()),
+            geometry_data: data.clone(),
             animations: Arc::from([]),
         }))
     };

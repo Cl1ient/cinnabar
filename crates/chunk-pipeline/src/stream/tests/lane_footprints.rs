@@ -18,8 +18,9 @@ const REMOTE: u64 = 9;
 const ITEM: u64 = 10;
 
 /// Wire kinds; adding a `WorldEvent` variant fails to compile here until it gets a sample.
-const KINDS: usize = 46;
+const KINDS: usize = 47;
 
+/// Assigns every wire event a coverage index without accepting unknown variants.
 fn kind(event: &WorldEvent) -> usize {
     match event {
         WorldEvent::DimensionHeights(_) => 0,
@@ -70,6 +71,7 @@ fn kind(event: &WorldEvent) -> usize {
         WorldEvent::ActorPropertySync(_) => 43,
         WorldEvent::Ui(_) => 44,
         WorldEvent::BlockCrack(_) => 45,
+        WorldEvent::WorldSpawn(_) => 46,
         WorldEvent::Equipment(_)
         | WorldEvent::ArmorEquipment(_)
         | WorldEvent::Inventory(_)
@@ -369,6 +371,9 @@ fn samples() -> Vec<WorldEvent> {
         movement_effect(REMOTE),
         WorldEvent::NetworkStackLatency(1),
         WorldEvent::SetTime(SetTimeEvent { time: 1 }),
+        WorldEvent::WorldSpawn(protocol::WorldSpawnEvent {
+            position: [12, 64, -8],
+        }),
         WorldEvent::WorldClocks(vec![WorldClockUpdateEvent::Sync(WorldClockState {
             id: 0,
             time: 1,

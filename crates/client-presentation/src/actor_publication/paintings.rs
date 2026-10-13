@@ -1,7 +1,7 @@
 //! Static hanging pictures share actor pages while retaining their dedicated ingress state.
 use super::*;
 use crate::presentation::actors::{ActorPresentationBatch, actor_within_render_distance};
-use assets::painting::{PAINTING_MOTIVES, motive};
+use assets::painting::{PAINTING_HALF_DEPTH, PAINTING_MOTIVES, motive};
 use render_api::PoseGeneration;
 use render_model::{ActorArtworkLocation, ActorArtworkPages, EntityRigId, RenderBoneTransform};
 use std::collections::BTreeMap;
@@ -74,23 +74,24 @@ impl PaintingRoutes {
                 center: [0.0; 3],
                 half_extents: [width / 2.0, height / 2.0, width / 2.0],
             };
-            if let Some(view) = view {
-                let Some((low, high)) = actor.bounding_box() else {
-                    continue;
-                };
-                if !render_model::actor_bounds_are_visible(
-                    actor.position,
-                    1.0,
-                    assets::SkinGeometryBounds {
-                        center: std::array::from_fn(|axis| {
-                            (low[axis] + high[axis]) * 0.5 - actor.position[axis]
-                        }),
-                        half_extents: std::array::from_fn(|axis| (high[axis] - low[axis]) * 0.5),
-                    },
-                    Some(view),
-                ) {
-                    continue;
+            let world_half_extents = match painting.direction {
+                protocol::PaintingDirection::South | protocol::PaintingDirection::North => {
+                    [width / 2.0, height / 2.0, PAINTING_HALF_DEPTH]
                 }
+                protocol::PaintingDirection::West | protocol::PaintingDirection::East => {
+                    [PAINTING_HALF_DEPTH, height / 2.0, width / 2.0]
+                }
+            };
+            if !render_model::actor_bounds_are_visible(
+                actor.position,
+                1.0,
+                assets::SkinGeometryBounds {
+                    center: [0.0; 3],
+                    half_extents: world_half_extents,
+                },
+                view,
+            ) {
+                continue;
             }
             let Some(parts) = self.parts.get(motive.title) else {
                 continue;

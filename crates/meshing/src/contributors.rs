@@ -214,6 +214,9 @@ pub(crate) struct PaletteFacts<'a> {
     uniform_seasonal_shelter: bool,
     /// Per-voxel answers of a mixed section, decoded once by [`PaletteFacts::decode_voxels`].
     decoded: Option<DecodedVoxels>,
+    /// [`PaletteFacts::at`]'s answer for each palette entry of a single-storage mixed section,
+    /// which needs no per-voxel contributor resolution.
+    surfaces: Option<Box<[ResolvedPaletteEntry]>>,
 }
 
 /// A mixed section's [`PaletteFacts::at`] and seasonal-shelter answers for all 4,096 voxels, as
@@ -260,12 +263,14 @@ impl<'a> PaletteFacts<'a> {
                 source: PaletteSource::Air,
                 uniform_seasonal_shelter,
                 decoded: None,
+                surfaces: None,
             }
         } else {
             Self {
                 source: PaletteSource::Uniform(contributors),
                 uniform_seasonal_shelter,
                 decoded: None,
+                surfaces: None,
             }
         }
     }
@@ -294,10 +299,25 @@ impl<'a> PaletteFacts<'a> {
             })
             .collect::<Vec<_>>()
             .into_boxed_slice();
+        let surfaces = match &storages[..] {
+            [storage] => Some(
+                storage
+                    .entries
+                    .iter()
+                    .map(|&entry| {
+                        let mut contributors = ResolvedContributors::default();
+                        contributors.push(entry);
+                        contributors.geometry_entry()
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        };
         Self {
             source: PaletteSource::Mixed(storages),
             uniform_seasonal_shelter: true,
             decoded: None,
+            surfaces,
         }
     }
 
@@ -481,6 +501,12 @@ impl<'a> PaletteFacts<'a> {
         let PaletteSource::Mixed(storages) = &self.source else {
             return self.contributors_at(x, y, z).geometry_entry();
         };
+        if let (Some(surfaces), [storage]) = (&self.surfaces, &storages[..]) {
+            return packed_palette_index(storage.storage, x, y, z)
+                .and_then(|index| surfaces.get(index))
+                .copied()
+                .unwrap_or(ResolvedPaletteEntry::diagnostic(0, None));
+        }
         let mut contributors = ResolvedContributors::default();
         for storage in storages {
             let Some(&entry) = packed_palette_index(storage.storage, x, y, z)

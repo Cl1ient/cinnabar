@@ -563,9 +563,9 @@ world_packets! {
         }
         WorldEvent::WorldSpawn(WorldSpawnEvent {
             position: [
-                packet.spawn_block_pos.x.0,
-                packet.spawn_block_pos.y.0,
-                packet.spawn_block_pos.z.0,
+                packet.block_position.x.0,
+                packet.block_position.y.0,
+                packet.block_position.z.0,
             ],
         })
     },

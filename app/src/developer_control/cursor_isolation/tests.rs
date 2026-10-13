@@ -327,3 +327,65 @@ fn physical_cursor_precision_and_other_internal_requests_survive_virtual_input()
     );
     assert_eq!(app.world().resource::<NativeFacing>().cursor_updates, 0);
 }
+
+#[test]
+fn synthetic_pointer_click_activates_the_production_menu_hit() {
+    use client_shell::{
+        menu::{MenuClipboard, MenuRuntime, drive_menu_input},
+        ui_resources::{UiPresentationResource, UiRuntimeResource},
+    };
+    use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
+    use launcher::menu::{MenuAction, MenuField};
+
+    let (mut app, entity) = harness();
+    let player = client_state::PlayerRuntime(player_state::PlayerState::new(1));
+    let runtime = UiRuntime::new(1);
+    let mut menu = MenuRuntime::new(true, 2, "test".into());
+    menu.activate(MenuAction::PlayAddServer);
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    presentation.set_menu_view(Some(menu.view()));
+    presentation
+        .build(
+            &player,
+            &runtime,
+            0,
+            [1280, 720],
+            ui::DpiScale::new(1.0).unwrap(),
+        )
+        .unwrap();
+    let point = (0..720)
+        .step_by(8)
+        .flat_map(|y| {
+            (0..1280)
+                .step_by(8)
+                .map(move |x| ui::UiPoint::new(x as f32, y as f32).unwrap())
+        })
+        .find(|point| presentation.hit_test_menu(*point) == Some(MenuAction::AddAddress))
+        .unwrap();
+    app.insert_resource(player)
+        .insert_resource(UiRuntimeResource(runtime))
+        .insert_resource(UiPresentationResource(presentation))
+        .insert_resource(menu)
+        .insert_resource(MenuClipboard::with_access(|_| None, |_| {}))
+        .add_systems(Update, drive_menu_input);
+    input::apply(
+        app.world_mut(),
+        &InputCommand {
+            cursor: Some([point.x(), point.y()]),
+            press: vec!["MouseLeft".into()],
+            ..default()
+        },
+    )
+    .unwrap();
+    app.update();
+    assert_eq!(
+        app.world().resource::<MenuRuntime>().view().field,
+        Some(MenuField::Address)
+    );
+    assert_eq!(app.world().resource::<NativeFacing>().cursor_updates, 0);
+    assert_eq!(
+        app.world().get::<Window>(entity).unwrap().cursor_position(),
+        Some(Vec2::new(31.0, 47.0))
+    );
+}

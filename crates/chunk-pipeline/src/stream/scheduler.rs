@@ -94,7 +94,7 @@ impl Lane {
 pub(super) struct SchedulerRefresh<const L: usize> {
     previous: [Lane; L],
     view: Option<SchedulerView>,
-    near_wakeups: HashSet<SubChunkKey>, // nearby work became ready without a new scan record
+    woken: Vec<SubChunkKey>, // nearby work made ready without a new scan record
 }
 
 impl<const L: usize> Default for SchedulerRefresh<L> {
@@ -102,22 +102,22 @@ impl<const L: usize> Default for SchedulerRefresh<L> {
         Self {
             previous: std::array::from_fn(|_| Lane::default()),
             view: None,
-            near_wakeups: HashSet::new(),
+            woken: Vec::new(),
         }
     }
 }
 
 impl<const L: usize> SchedulerRefresh<L> {
-    /// Requests a readiness probe for this key when it lies near the camera.
+    /// Offers `key` to the next dispatch when it lies in the camera's neighbourhood.
     pub(super) fn wake_near(&mut self, key: SubChunkKey) {
-        if self.view.is_some_and(|view| mesh_is_near(view, key)) {
-            self.near_wakeups.insert(key);
+        if self.view.is_some_and(|view| mesh_is_near(view, key)) && !self.woken.contains(&key) {
+            self.woken.push(key);
         }
     }
 
-    /// Consumes the nearby keys whose readiness changed since the last dispatch.
-    pub(super) fn take_near_wakeups(&mut self) -> impl Iterator<Item = SubChunkKey> {
-        self.near_wakeups.drain()
+    /// Drains the keys [`Self::wake_near`] offered since the last dispatch.
+    pub(super) fn take_woken(&mut self) -> Vec<SubChunkKey> {
+        std::mem::take(&mut self.woken)
     }
 
     /// Refreshes bounded queue work and reports whether the view still needs direct local probes.

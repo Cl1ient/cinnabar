@@ -435,6 +435,29 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 - Exact texture rotation/crop parity remains incomplete; the models retain provisional support
   until a matching native directional gallery verifies texel orientation. No parity gate closes.
 
+## Anvil screen
+
+- The anvil predicts its result and cost: repair materials restore a
+  quarter of the durability each for a level each, a second damaged copy adds its remaining
+  durability plus 12% for two levels, and enchantments merge by the native registry's slots,
+  caps, rarity multipliers and exclusivity. A second item that changes nothing clears the
+  result; renaming adds a level, and a rename alone stays below 40 levels and keeps the
+  prior-work penalty, which other takes double plus one.
+- The name box prefills from each new target. The result slot and its tooltip show the
+  server's output when supplied, otherwise the prediction. For predictions, the cost
+  line turns green or red by the player's levels or shows "Too Expensive!", and the cross
+  marks a target that makes nothing. Taking a prediction sends that result and consumes the
+  materials it uses; server outputs keep their authoritative take path. Predictions retain
+  complete enchantment levels and lists and decline unsupported enchantment fields.
+- Predictions apply retained server damage and name corrections to both inputs and the
+  resulting item data. Unchanged prefilled names retain whitespace. Server outputs suppress
+  local cost and invalid-result indicators. Damage-only corrections preserve edits in progress;
+  a changed authoritative name refreshes the prefill, while acknowledgements that echo its
+  effective name preserve edits regardless of whether the name comes from NBT or a response.
+- Provisional: repair materials and item enchantment slots follow vanilla item names rather
+  than each item's native registration, and data-driven anvil recipes are not predicted.
+  Current-version visual and behavior parity remains incomplete; no anvil parity gate closes.
+
 ## OreUI menus, appearance and motion
 
 - Home, Pause, Play, Inbox, world creation, Accounts and confirmation dialogs use shared OreUI
@@ -483,6 +506,7 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 ## Shipped OreUI fonts
 
 - Pack labels requesting `MinecraftTen` select Cinnangles Ten while retaining the authored text.
+  Outline label sizing keeps bold and italic effects in display units, including caret advances.
   Server-form item controls resolve ordinary numeric item keys through the negotiated registry
   and existing icon sources. Capped collection factories retain a final Back button's response
   index. Target-platform shop artwork, title, controls and server-response acceptance remain
@@ -748,6 +772,10 @@ authored poses. Java 1.7 takes precedence for body, arm and item poses.
 First-person hand sway deliberately uses Java tick smoothing in both combat
 profiles, independently of the Java animation option.
 Movement bob uses the physics fraction; hurt and death use the actor fraction.
+Remote movement keeps pitch in the signed half-turn range before strike poses read it.
+Frame interpolation takes the shortest pitch arc across the signed boundary in Java mode.
+Regression coverage samples repeated remote swings in Bedrock and Java modes with equivalent
+signed and wrapped pitch values; compilation and execution remain pending CI.
 Page-level body dye masks retain zero-alpha RGB and depth independently of armour cutout.
 
 Implementation and deterministic swing, sway, camera, overlay, equipment and shader fixtures
@@ -1375,7 +1403,16 @@ acceptance gate.
   custom cubes keep both sides until their alpha mode reaches the mesh build.
 - Regressions reproduce the previous gameplay-flag, alpha and missing-sheet failures.
 - Rebuilt macOS/Metal frames show cube geometry; the user confirmed the live fix.
-- Non-cube, animated and high-resolution carried geometry parity remains open.
+- Non-cube block items the inventory draws in 3D (slabs, stairs, fences, walls, anvils) hold
+  as the same template geometry, from the state their inventory model shows; items the
+  inventory draws flat (torches, plants, panes) keep their sprite.
+- Chests (normal, trapped, ender and copper), shulker boxes, decorated pots and conduits hold
+  as their placed block-entity models, closed and centred. Provisional: their held facing and
+  the native item renderer's pose for them are unmeasured. Banners still hold as sprites;
+  beds are sprites in vanilla too.
+- Held block-entity artwork follows the prepared resource-pack generation and restores startup
+  bindings after disconnect. Missing pot base or side artwork retains the sprite fallback.
+- Animated and high-resolution carried geometry parity remains open.
 - Vanilla rules: [held block items](docs/reference/held-block-items.md).
 
 ## Scaled name tags
@@ -2449,9 +2486,15 @@ first live offhand Shield exposed a missing expression-bound ModelPart origin;
 the correction now passes both hand poses and real-carrier tests.
 2026-10-07 non-cube block items (slabs, stairs, walls, fences) also draw as GUI geometry at
 display resolution instead of a 32x32 thumbnail (icon carrier v3 names each thumbnail's world
-state). Incomplete: their GUI tessellation is still the provisional cube projection, blended
-materials (stained panes) keep the thumbnail, and the bamboo fence and fence gate items show
-misplaced quads, as their thumbnails already did.
+state). Cut-out cubes (glass, leaves) draw all six alpha-tested faces, including rear faces
+visible through holes. Non-blended face alpha uses the thumbnail threshold; fractional blended
+faces (stained glass) retain their composed thumbnail. Chests (a cube of their inventory tiles)
+and blend-flagged art that is only opaque or cut out (anvils) draw as GUI geometry too. Overlapping
+meshes keep their thumbnail when faded. Optional sources follow required atlas pages and fall
+back to thumbnails when the atlas is full. Incomplete: layered translucent cube GUI geometry is
+not implemented, non-cube GUI tessellation still uses the provisional cube projection, truly
+translucent non-cube materials (stained panes) keep the thumbnail, and the bamboo fence and fence
+gate items show misplaced quads, as their thumbnails already did.
 Integration retains upstream's gamma-space UI layer, font/animation paths and
 independently inherited image/sidecar overrides. Stateful inventory/HUD providers
 explicitly clear empty icon bindings so compact icon tables cannot leave duplicate
@@ -7703,9 +7746,10 @@ does not close the broader native body-motion or live visual parity gate. See
 ## Server pack compatibility
 
 Resource-pack admission accepts corrected chunk-transfer sizes within its archive
-and selected-stack byte limits. Required packs retain their acquired archive and
-actual size through the session handoff. Incomplete: unrestricted pack-size parity
-and exact native admission comparisons remain open.
+and selected-stack byte limits. Repeated offer identities consume the count and
+byte budgets once, retaining the first entry's size estimate. Required packs retain
+their acquired archive and actual size through the session handoff. Incomplete:
+unrestricted pack-size parity and exact native admission comparisons remain open.
 
 Galaxite's full-block geometry, composite Battle Pass models, translucent podium
 glows, state-filtered path borders, correctly lit benches, custom hotbar/held items

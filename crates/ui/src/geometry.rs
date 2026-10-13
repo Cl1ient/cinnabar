@@ -18,7 +18,8 @@ pub struct UiScale(f32);
 impl UiScale {
     pub const MIN: f32 = 0.5;
     pub const MAX: f32 = 4.0;
-    pub(crate) const SCALE_DENOMINATOR: i64 = 1_024;
+    /// Fixed-point denominator shared by glyph and styling scales in text layout.
+    pub const SCALE_DENOMINATOR: i64 = 1_024;
     /// The smallest nonzero scale representable by the text layout's fixed point.
     pub const DISPLAY_MIN: f32 = 1.0 / Self::SCALE_DENOMINATOR as f32;
     /// Upper bound for magnified display text (titles), beyond the user-selectable range.

@@ -610,6 +610,7 @@ fn text_spot(
         bounds,
         left: text.left,
         factor: text.scale,
+        effect_scale_1024: text.effect_scale_1024,
         font: text.font.clone(),
         letter_spacing_64: 0,
         metrics,

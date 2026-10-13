@@ -279,6 +279,7 @@ fn paint_edit_label(
     metrics: TextMetrics,
     factor: f32,
     name: &str,
+    text: &str,
 ) -> (EngineFrame, Vec<UiNode>) {
     static REGISTRY: std::sync::OnceLock<ScreenRegistry> = std::sync::OnceLock::new();
     let registry = REGISTRY.get_or_init(|| ScreenRegistry::new(Context::desktop()));
@@ -298,7 +299,7 @@ fn paint_edit_label(
             "type": "edit_box", "size": [300, 100], "text_control": "value", "max_length": 64,
             "anchor_from": "top_left", "anchor_to": "top_left",
             "controls": [{"value": {
-                "type": "label", "text": "0000", "localize": false,
+                "type": "label", "text": text, "localize": false,
                 "size": [300, 100], "anchor_from": "top_left", "anchor_to": "top_left",
                 "offset": [8, 8], "font_scale_factor": factor, "font_type": name, "shadow": true
             }}]
@@ -368,7 +369,7 @@ fn named_edit_metadata_places_caret_at_the_painted_character_boundary() {
                         DpiScale::new(dpi).unwrap(),
                         Some(2),
                     );
-                    let (frame, nodes) = paint_edit_label(&font, metrics, factor, name);
+                    let (frame, nodes) = paint_edit_label(&font, metrics, factor, name, "0000");
                     let [edit] = frame.edit_texts.as_slice() else {
                         panic!("one edit box");
                     };
@@ -384,6 +385,7 @@ fn named_edit_metadata_places_caret_at_the_painted_character_boundary() {
                         bounds: node.bounds(),
                         left: edit.left,
                         factor: edit.scale,
+                        effect_scale_1024: edit.effect_scale_1024,
                         font: edit.font.clone(),
                         letter_spacing_64: 0,
                         metrics,
@@ -419,7 +421,7 @@ fn named_label_shadow_keeps_its_display_offset_across_raster_sizes() {
                         DpiScale::new(dpi).unwrap(),
                         Some(2),
                     );
-                    let (_, nodes) = paint_edit_label(&font, metrics, factor, name);
+                    let (_, nodes) = paint_edit_label(&font, metrics, factor, name, "0000");
                     let viewport = rect(0.0, 0.0, 1280.0, 720.0).unwrap();
                     let mut tree = UiTree::new(nodes).unwrap();
                     tree.layout(viewport, UiScale::default(), SafeArea::ZERO)
@@ -438,6 +440,95 @@ fn named_label_shadow_keeps_its_display_offset_across_raster_sizes() {
                             );
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn named_styled_font_effects_use_display_units_at_every_raster_resolution() {
+    let face = assets::carriers::FONT_TEN.font_face.unwrap();
+    let alias = face.json_ui_alias.unwrap();
+    for em in [26, 52] {
+        let font = fixture_font()
+            .with_named_font(face.name, &native_font(em))
+            .unwrap();
+        for dpi in [1.0, 1.5] {
+            for factor in [1.0, 1.3] {
+                let metrics =
+                    TextMetrics::for_viewport([1280, 720], DpiScale::new(dpi).unwrap(), Some(2));
+                let text = "§l§o0000";
+                let (frame, nodes) = paint_edit_label(&font, metrics, factor, alias, text);
+                let [edit] = frame.edit_texts.as_slice() else {
+                    panic!("one edit field")
+                };
+                let (node, layout) = nodes
+                    .iter()
+                    .find_map(|node| match node.visual() {
+                        UiVisual::Text { layout, .. } => Some((node, Arc::clone(layout))),
+                        _ => None,
+                    })
+                    .unwrap();
+                let spot = TextSpot {
+                    field: (),
+                    bounds: node.bounds(),
+                    left: edit.left,
+                    factor: edit.scale,
+                    effect_scale_1024: edit.effect_scale_1024,
+                    font: edit.font.clone(),
+                    letter_spacing_64: 0,
+                    metrics,
+                };
+                assert_eq!(
+                    spot.width(&mut TextLayoutCache::new(4, 1 << 20), &font, text),
+                    layout.size_64()[0] as f32 / 64.0
+                );
+                let mut tree = UiTree::new(nodes).unwrap();
+                tree.layout(
+                    rect(0.0, 0.0, 1280.0, 720.0).unwrap(),
+                    UiScale::default(),
+                    SafeArea::ZERO,
+                )
+                .unwrap();
+                let draw = tree.build_draw_list().unwrap();
+                assert_eq!(draw.vertices.len(), 64, "four bold glyphs with shadow");
+                let ink = &draw.vertices[32..];
+                let (_, reference_nodes) =
+                    paint_edit_label(&fixture_font(), metrics, factor, "default", text);
+                let mut reference = UiTree::new(reference_nodes).unwrap();
+                reference
+                    .layout(
+                        rect(0.0, 0.0, 1280.0, 720.0).unwrap(),
+                        UiScale::default(),
+                        SafeArea::ZERO,
+                    )
+                    .unwrap();
+                let reference = reference.build_draw_list().unwrap();
+                let reference = &reference.vertices[32..];
+                let expected_bold = reference[4].position[0] - reference[0].position[0];
+                let expected_italic = reference[0].position[0] - reference[3].position[0];
+                for glyph in ink.chunks_exact(8) {
+                    let bold = glyph[4].position[0] - glyph[0].position[0];
+                    let italic = glyph[0].position[0] - glyph[3].position[0];
+                    assert!(
+                        (bold - expected_bold).abs() < 0.02,
+                        "em {em}, DPI {dpi}, factor {factor}: bold {bold}"
+                    );
+                    assert!(
+                        (italic - expected_italic).abs() < 0.02,
+                        "em {em}, DPI {dpi}, factor {factor}: italic {italic}"
+                    );
+                    let pen = (layout.glyphs()[1].bounds_64[0] - layout.glyphs()[0].bounds_64[0])
+                        as f32
+                        / 64.0;
+                    let width = (layout.glyphs()[0].bounds_64[2] - layout.glyphs()[0].bounds_64[0])
+                        as f32
+                        / 64.0;
+                    assert!(
+                        (pen - width - bold).abs() < 0.02,
+                        "bold paint and pen advance must agree"
+                    );
                 }
             }
         }

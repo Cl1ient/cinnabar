@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Unpacks the prep kit and prepares game assets behind Android dialogs, then starts the game. */
 public final class BootstrapActivity extends Activity {
@@ -22,10 +23,14 @@ public final class BootstrapActivity extends Activity {
 
     private static final String RESOURCES = "resources";
 
-    /** Null when the game can start, empty when the user quit, otherwise the failure. */
-    private native String prepare(String filesDir, String nativeLibraryDir);
-    private native void cancel();
+    /** Numbers setup attempts across activity instances, so a cancellation names its own. */
+    private static final AtomicLong ATTEMPTS = new AtomicLong();
 
+    /** Null when the game can start, empty when the user quit, otherwise the failure. */
+    private native String prepare(String filesDir, String nativeLibraryDir, long attempt);
+    private native void cancel(long attempt);
+
+    private volatile long attempt;
     private ProgressDialog progress;
     private volatile CountDownLatch consentAnswer;
 
@@ -36,14 +41,16 @@ public final class BootstrapActivity extends Activity {
 
     private void start() {
         showProgress("Preparing @PRODUCT_NAME@");
-        new Thread(this::setup, "setup").start();
+        long current = ATTEMPTS.incrementAndGet();
+        attempt = current;
+        new Thread(() -> setup(current), "setup").start();
     }
 
-    private void setup() {
+    private void setup(long current) {
         String result;
         try {
             unpackResources();
-            result = prepare(getFilesDir().getAbsolutePath(), getApplicationInfo().nativeLibraryDir);
+            result = prepare(getFilesDir().getAbsolutePath(), getApplicationInfo().nativeLibraryDir, current);
         } catch (Exception error) {
             result = error.toString();
         }
@@ -139,7 +146,7 @@ public final class BootstrapActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
-        cancel();
+        cancel(attempt);
         CountDownLatch answer = consentAnswer;
         if (answer != null) answer.countDown();
         if (progress != null) progress.dismiss();

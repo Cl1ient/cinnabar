@@ -41,10 +41,10 @@ pub(crate) fn advance_local_physics(
     settings: Option<Res<RuntimeSettings>>,
     player: Option<Res<PlayerRuntime>>,
     item_use: Option<Res<client_interaction::item_use::ItemUseRuntime>>,
-    mut locals: Local<LocomotionLocals>,
-    mut presented_bed: Local<Option<[i32; 3]>>,
+    mut locals: Local<(LocomotionLocals, Option<[i32; 3]>)>,
     network: Option<Res<NetworkHandle<PackApplication>>>,
 ) {
+    let (locals, presented_bed) = &mut *locals;
     if acceptance.deadline_reached(Instant::now()) {
         movement_ticker.begin_terminal_drain();
     }
@@ -114,12 +114,7 @@ pub(crate) fn advance_local_physics(
     locals.observe_dismount(&frame, movement_ticker.session_generation());
     if !movement_ticker.can_advance_physics_frame() {
         // Retain presses and publish the pose while transport pauses simulation.
-        publish_physics_view(
-            &physics,
-            &mut view,
-            sleeping_bed(stream),
-            &mut presented_bed,
-        );
+        publish_physics_view(&physics, &mut view, sleeping_bed(stream), presented_bed);
         return;
     }
     let world = sim::PaletteWorld::for_movement(
@@ -143,12 +138,7 @@ pub(crate) fn advance_local_physics(
             network.send_inventory_packets(vec![packet])
         });
     }
-    publish_physics_view(
-        &physics,
-        &mut view,
-        sleeping_bed(stream),
-        &mut presented_bed,
-    );
+    publish_physics_view(&physics, &mut view, sleeping_bed(stream), presented_bed);
 }
 
 /// The bed the local player sleeps in, once the server says so.

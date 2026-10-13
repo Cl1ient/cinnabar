@@ -10,7 +10,6 @@ pub(super) fn select_template<'a>(
     entry: ResolvedPaletteEntry,
 ) -> Option<u32> {
     let pose = DoorPose::from_variant(entry.variant)?;
-    let base = entry.model_template.checked_sub(pose.offset())?;
     let neighbor = adjacent_palette_entry(
         context,
         facts,
@@ -25,9 +24,11 @@ pub(super) fn select_template<'a>(
     if model_template_flags(context.visuals, neighbor) != assets::MODEL_TEMPLATE_FLAG_DOOR {
         return None;
     }
-    let other = DoorPose::from_variant(neighbor.variant)?;
-    if neighbor.model_template.checked_sub(other.offset())? != base {
-        return None;
-    }
-    Some(base + pose.with_neighbor(other).offset())
+    assets::door::paired_template(
+        context.visuals.model_templates(),
+        entry.model_template,
+        entry.variant,
+        neighbor.model_template,
+        neighbor.variant,
+    )
 }

@@ -1,4 +1,127 @@
+use super::super::crack_shape_from_template;
 use super::*;
+
+#[test]
+fn door_crack_cache_tracks_neighbor_pose_without_changing_runtime_id() {
+    let data = assets::pinned_block_registry_bytes();
+    let protocol = assets::registry_header_protocol(data).unwrap();
+    let records = assets::read_registry_for_protocol(data, protocol)
+        .unwrap()
+        .into_iter()
+        .filter(|record| {
+            matches!(
+                record.name.as_ref(),
+                "minecraft:air" | "minecraft:warped_door"
+            )
+        })
+        .enumerate()
+        .map(|(index, mut record)| {
+            record.sequential_id = index as u32;
+            record
+        })
+        .collect::<Vec<_>>();
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    std::fs::create_dir_all(root.join("textures/blocks")).unwrap();
+    std::fs::write(
+        root.join("blocks.json"),
+        r#"{"warped_door":{"textures":"test"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("textures/terrain_texture.json"),
+        r#"{"texture_data":{"test":{"textures":"textures/blocks/test"}}}"#,
+    )
+    .unwrap();
+    std::fs::write(root.join("textures/flipbook_textures.json"), "[]").unwrap();
+    image::RgbaImage::from_pixel(16, 16, image::Rgba([127, 127, 127, 255]))
+        .save(root.join("textures/blocks/test.png"))
+        .unwrap();
+    let lights = vec![assets::LightProperties::default(); records.len()];
+    let compiled = pack_compiler::compile_pack(root, &records, &lights).unwrap();
+    let world =
+        Arc::new(assets::RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap());
+    let state = |upper: bool, hinge: u32| {
+        records
+            .iter()
+            .find(|record| {
+                record.name.as_ref() == "minecraft:warped_door"
+                    && record.model_state.get(assets::ModelStateField::Flags)
+                        == Some(u32::from(upper) << 7)
+                    && record.model_state.get(assets::ModelStateField::Orientation)
+                        == Some(if upper { 3 } else { 0 })
+                    && record.model_state.get(assets::ModelStateField::Open)
+                        == Some(u32::from(!upper))
+                    && record.model_state.get(assets::ModelStateField::Hinge) == Some(hinge)
+            })
+            .unwrap()
+    };
+    for mode in [
+        assets::NetworkIdMode::Sequential,
+        assets::NetworkIdMode::Hashed,
+    ] {
+        let id = |record: &assets::RegistryRecord| {
+            if mode == assets::NetworkIdMode::Sequential {
+                record.sequential_id
+            } else {
+                record.network_hash
+            }
+        };
+        let lower = id(state(false, 0));
+        let block = [0, 15, 0];
+        let mut cache = CrackShapeCache::default();
+        let mut first = None;
+        let mut previous = None;
+        for hinge in [1, 0, 1] {
+            let neighbor = id(state(true, hinge));
+            let template = world
+                .world_model_template(mode, lower, block, |position| {
+                    assert_eq!(position, [0, 16, 0]);
+                    Some(neighbor)
+                })
+                .unwrap();
+            let expected = crack_shape_from_template(&world, template, 0, block).unwrap();
+            assert_eq!(
+                crate::crack_shape_for_block(&world, mode, lower, block, |_| Some(neighbor)),
+                Some(expected.clone()),
+                "selection surfaces use the paired plane too"
+            );
+            let actual = cache.shape(&world, mode, Some(lower), block, Some(template));
+            assert_eq!(
+                actual, expected,
+                "neighbor hinge must select the visible door plane"
+            );
+            if let Some(previous) = previous {
+                assert_ne!(actual, previous);
+            }
+            if first.is_none() {
+                first = Some(actual.clone());
+            }
+            previous = Some(actual);
+        }
+        let (CrackShape::Quads(first), Some(CrackShape::Quads(last))) = (first.unwrap(), previous)
+        else {
+            panic!("door surface");
+        };
+        assert!(
+            Arc::ptr_eq(&first, &last),
+            "returning to an unchanged pose reuses its surfaces"
+        );
+        assert_eq!(
+            cache.shapes.len(),
+            2,
+            "cache stays bounded by poses rather than positions"
+        );
+        let CrackShape::Quads(empty) = cache.shape(&world, mode, Some(lower), block, None) else {
+            panic!("unpaired door has no terrain surfaces");
+        };
+        assert!(empty.is_empty());
+        assert_eq!(
+            crate::crack_shape_for_block(&world, mode, lower, block, |_| None),
+            Some(CrackShape::Quads(empty))
+        );
+    }
+}
 
 #[test]
 fn bamboo_cracks_follow_columns_and_reuse_unchanged_geometry() {
@@ -263,4 +386,16 @@ fn resource_reload_replaces_crack_surfaces_without_changing_block_identity() {
             )
         );
     }
+}
+
+/// Resolves position-independent models for the pre-existing cache regressions.
+fn crack_shape(
+    cache: &mut CrackShapeCache,
+    assets: &Arc<assets::RuntimeAssets>,
+    mode: assets::NetworkIdMode,
+    runtime_id: Option<u32>,
+    block: [i32; 3],
+) -> CrackShape {
+    let template = runtime_id.and_then(|id| assets.resolve(mode, id).model_template());
+    cache.shape(assets, mode, runtime_id, block, template)
 }

@@ -4,7 +4,8 @@ use super::{ItemMeshRange, mesh_storage::MeshStorage};
 use render_model::{
     DroppedItemModel, ItemMeshVertex, MAX_ITEM_LAYERS, MIN_ITEM_ATLAS_SIDE,
     dropped_item::{
-        DroppedItemBounds, block_mesh, cube_mesh, extruded_sprite_mesh, native_dropped_sprite_mesh,
+        DroppedItemBounds, atlas_layer_limit, block_mesh, cube_mesh, extruded_sprite_mesh,
+        native_dropped_sprite_mesh,
     },
 };
 
@@ -79,41 +80,6 @@ fn build_mesh(
     }
 }
 
-/// Counts artwork layers without the reserved white layer.
-fn model_texture_layers(model: &DroppedItemModel) -> usize {
-    match model {
-        DroppedItemModel::Vacant => 0,
-        DroppedItemModel::Sprite(_) | DroppedItemModel::NativeSprite(_) => 1,
-        DroppedItemModel::Cube(cube) => cube.faces.len(),
-        DroppedItemModel::Block(block) => block.materials.len(),
-    }
-}
-
-/// Returns the minimum physical extent for a model that can fit alongside the white layer.
-pub(super) fn model_side(
-    model: &DroppedItemModel,
-    policy: assets::texture::policy::TexturePolicy,
-) -> Option<u32> {
-    let side = match model {
-        DroppedItemModel::Block(block) => block
-            .materials
-            .iter()
-            .map(|(sprite, _)| sprite.width.max(sprite.height))
-            .max(),
-        DroppedItemModel::Cube(cube) => Some(cube.tile),
-        DroppedItemModel::Sprite(sprite) | DroppedItemModel::NativeSprite(sprite) => {
-            Some(sprite.width.max(sprite.height))
-        }
-        DroppedItemModel::Vacant => None,
-    }?
-    .checked_next_power_of_two()?
-    .max(MIN_ITEM_ATLAS_SIDE);
-    let layers = model_texture_layers(model).checked_add(1)?;
-    let bytes = policy.page_bytes(side, side)?.checked_mul(layers)?;
-    (layers <= MAX_ITEM_LAYERS && bytes <= assets::texture::policy::MAX_SUBSCRIBER_BYTES)
-        .then_some(side)
-}
-
 /// Copies valid textures only after their model's geometry and layers have been admitted.
 fn copy_model_layers(atlas: &mut Vec<u8>, model: &DroppedItemModel, side: u32) {
     let mut push = |width: u32, height: u32, pixels: &[u8]| {
@@ -179,13 +145,10 @@ impl PreparedModels {
         for model in models {
             let start = vertices.len() as u32;
             let mut uv_side = side;
-            let needed = model_texture_layers(model);
-            if let Some(candidate) = model_side(model, policy).map(|extent| extent.max(side))
-                && layers + needed <= max_array_layers as usize
-                && policy
-                    .page_bytes(candidate, candidate)
-                    .and_then(|bytes| bytes.checked_mul(layers + needed))
-                    .is_some_and(|bytes| bytes <= assets::texture::policy::MAX_SUBSCRIBER_BYTES)
+            let needed = model.texture_layers();
+            if let Some(candidate) = model.atlas_side(policy).map(|extent| extent.max(side))
+                && layers + needed
+                    <= atlas_layer_limit(candidate, policy, max_array_layers as usize)
                 && let Some(mesh) = build_mesh(model, candidate, layers)
                 && !mesh.is_empty()
                 && vertices.append(mesh)

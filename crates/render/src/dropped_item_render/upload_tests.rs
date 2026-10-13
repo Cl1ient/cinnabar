@@ -60,14 +60,12 @@ fn potted_block_artwork_keeps_its_resolution_and_alpha() {
     assert_eq!(&atlas[(side * side * 4) as usize..], &pixels);
     assert!(mesh.iter().any(|vertex| vertex.uv == [1.0, 1.0]));
     assert_eq!(
-        model_side(
-            &DroppedItemModel::Sprite(render_model::DroppedItemSprite {
-                width: 16,
-                height: 16,
-                rgba8: Arc::from([255; 16 * 16 * 4])
-            }),
-            assets::texture::policy::device_policy()
-        ),
+        DroppedItemModel::Sprite(render_model::DroppedItemSprite {
+            width: 16,
+            height: 16,
+            rgba8: Arc::from([255; 16 * 16 * 4])
+        })
+        .atlas_side(assets::texture::policy::device_policy()),
         Some(render_model::MIN_ITEM_ATLAS_SIDE)
     );
 }
@@ -85,7 +83,7 @@ fn hd_dropped_sprites_keep_their_source_pixels_and_physical_extent() {
         rgba8: Arc::from(pixels.clone()),
     });
     assert_eq!(
-        model_side(&model, assets::texture::policy::device_policy()),
+        model.atlas_side(assets::texture::policy::device_policy()),
         Some(width)
     );
     let mut atlas = vec![255; (width * width * 4) as usize];

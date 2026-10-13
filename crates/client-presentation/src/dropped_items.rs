@@ -50,6 +50,7 @@ pub(super) struct DroppedItemPublisher<'w, 's> {
     textures: Option<Res<'w, ChunkTextureAssets>>,
     placements: Option<Res<'w, render_scene::StaticItemPlacementsResource>>,
     cache: Local<'s, ModelCache>,
+    device: Option<Res<'w, bevy::render::renderer::RenderDevice>>,
 }
 
 fn tint_rgba(flags: u32) -> u32 {
@@ -578,7 +579,24 @@ impl DroppedItemPublisher<'_, '_> {
             }
         }
         dial_models.warm(cache, icons);
-        cache.finish_frame();
+        let (policy, max_array_layers) = self.device.as_ref().map_or_else(
+            || {
+                (
+                    assets::texture::policy::device_policy(),
+                    render_model::MAX_ITEM_LAYERS,
+                )
+            },
+            |device| {
+                let limits = device.limits();
+                (
+                    assets::texture::policy::TexturePolicy::for_device(
+                        limits.max_texture_dimension_2d,
+                    ),
+                    limits.max_texture_array_layers as usize,
+                )
+            },
+        );
+        cache.finish_frame(policy, max_array_layers);
         scene.publish(
             cache.revision,
             Arc::clone(&cache.shared),

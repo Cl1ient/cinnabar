@@ -23,7 +23,7 @@ impl DialModels {
         }
     }
 
-    /// Keeps cached frames published and fills free capacity after current models are resolved.
+    /// Caches active frames after current models are resolved; publication limits extra GPU frames.
     pub(super) fn warm(&self, cache: &mut ModelCache, icons: &UiPresentationRuntime) {
         for (&identifier, frames) in &self.strips {
             for metadata in frames.clone() {

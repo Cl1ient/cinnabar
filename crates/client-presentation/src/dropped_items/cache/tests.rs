@@ -46,7 +46,10 @@ fn atlas_reclaims_despawned_models_and_keeps_live_handles() {
     assert_eq!(live, [Some(0), Some(100)]);
     assert_eq!(admit(&mut cache, 100), Some(100));
     assert!(cache.layers < MAX_ITEM_LAYERS);
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     assert_eq!(cache.shared.len(), MAX_ITEM_LAYERS - 1);
     assert!(!matches!(cache.shared[100], DroppedItemModel::Vacant));
 }
@@ -68,7 +71,10 @@ fn inactive_hd_models_cannot_size_the_current_atlas() {
             },
         )
         .unwrap();
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     let first_revision = cache.revision;
     frame(&mut cache, 1..=8);
     let ordinary = (1..=8)
@@ -88,7 +94,10 @@ fn inactive_hd_models_cannot_size_the_current_atlas() {
                 .unwrap()
         })
         .collect::<Vec<_>>();
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     assert!(matches!(
         cache.shared[hd as usize],
         DroppedItemModel::Vacant
@@ -106,7 +115,10 @@ fn inactive_hd_models_cannot_size_the_current_atlas() {
     assert!(cache.revision > first_revision);
     let shared = Arc::clone(&cache.shared);
     frame(&mut cache, 1..=8);
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     assert!(Arc::ptr_eq(&shared, &cache.shared));
     frame(&mut cache, [0, 1]);
     assert_eq!(
@@ -117,7 +129,10 @@ fn inactive_hd_models_cannot_size_the_current_atlas() {
         ),
         Some(hd)
     );
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     assert!(matches!(
         cache.shared[hd as usize],
         DroppedItemModel::Sprite(_)
@@ -135,10 +150,16 @@ fn evicted_cpu_pixels_are_released_and_returning_models_are_rebuilt() {
         panic!("sprite");
     };
     let old_pixels = Arc::downgrade(&old.rgba8);
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     frame(&mut cache, []);
     assert_eq!(admit(&mut cache, 900), Some(0));
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     assert!(
         old_pixels.upgrade().is_none(),
         "eviction releases CPU pixels"
@@ -162,7 +183,10 @@ fn unchanged_full_pressure_does_bounded_work_after_long_history() {
             admit(&mut cache, id).unwrap();
         }
     }
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     let live: Vec<_> = cache.index.keys().cloned().collect();
     for _ in 0..3 {
         let before = cache.inspections;
@@ -182,7 +206,10 @@ fn unchanged_full_pressure_does_bounded_work_after_long_history() {
                 None
             );
         }
-        cache.finish_frame();
+        cache.finish_frame(
+            assets::texture::policy::device_policy(),
+            render_model::MAX_ITEM_LAYERS,
+        );
         assert_eq!(cache.inspections - before, MAX_ITEM_LAYERS - 1);
         assert_eq!(cache.index.len(), MAX_ITEM_LAYERS - 1);
         assert_eq!(cache.residents.len(), MAX_ITEM_LAYERS - 1);
@@ -329,7 +356,10 @@ fn warm_icon_lookup_and_admission_do_not_allocate() {
         cache.model(key.clone(), || Some(1), || Some(sprite())),
         Some(0)
     );
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     let before = test_alloc::thread_allocations();
     for _ in 0..100 {
         cache.request(&key);
@@ -627,7 +657,10 @@ fn byte_budget_rejections_skip_builds_until_capacity_changes() {
     frame(&mut cache, []);
     let first = cache.model(key(0), || Some(6), cube).unwrap();
     let second = cache.model(key(1), || Some(6), cube).unwrap();
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     let shared = Arc::clone(&cache.shared);
     let costs = std::cell::Cell::new(0);
     let builds = std::cell::Cell::new(0);
@@ -649,7 +682,10 @@ fn byte_budget_rejections_skip_builds_until_capacity_changes() {
                 None
             );
         }
-        cache.finish_frame();
+        cache.finish_frame(
+            assets::texture::policy::device_policy(),
+            render_model::MAX_ITEM_LAYERS,
+        );
         assert!(Arc::ptr_eq(&shared, &cache.shared));
         assert_eq!(cache.index[&key(0)], first as usize);
         assert_eq!(cache.index[&key(1)], second as usize);
@@ -737,4 +773,29 @@ fn speculative_icon_frames_do_not_evict_models_at_the_pixel_limit() {
         "current items can still reclaim"
     );
     assert_eq!(cache.index[&key(0)], 0);
+}
+
+#[test]
+fn late_current_models_can_reclaim_speculative_frames_without_double_charging() {
+    let mut cache = ModelCache::default();
+    frame(&mut cache, []);
+    for id in 0..(MAX_ITEM_LAYERS - 1) as u32 {
+        cache.warm_icon(key(id), || Some(sprite())).unwrap();
+    }
+    let selected = cache.model(
+        key(0),
+        || panic!("cached frame"),
+        || panic!("cached pixels"),
+    );
+    assert_eq!(selected, Some(0));
+    assert_eq!(cache.available, MAX_ITEM_LAYERS - 2);
+    let current = admit(&mut cache, u32::MAX).unwrap();
+    assert_ne!(current, 0);
+    assert_eq!(cache.available, MAX_ITEM_LAYERS - 3);
+    cache.finish_frame(assets::texture::policy::device_policy(), MAX_ITEM_LAYERS);
+    assert!(!matches!(cache.shared[0], DroppedItemModel::Vacant));
+    assert!(!matches!(
+        cache.shared[current as usize],
+        DroppedItemModel::Vacant
+    ));
 }

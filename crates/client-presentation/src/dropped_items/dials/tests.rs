@@ -79,7 +79,10 @@ fn publish(cache: &mut ModelCache, icons: &UiPresentationRuntime, dials: bool) -
         })
         .collect();
     animation.warm(cache, icons);
-    cache.finish_frame();
+    cache.finish_frame(
+        assets::texture::policy::device_policy(),
+        render_model::MAX_ITEM_LAYERS,
+    );
     handles
 }
 
@@ -146,4 +149,117 @@ fn removed_dials_release_published_frames_and_reuse_cached_models_on_return() {
     assert_eq!(cache.revision, inactive_revision);
     assert_eq!(publish(&mut cache, &icons, true), handles);
     assert_eq!(cache.models.len(), resident_count);
+}
+
+/// Publishes an HD item and a clock, optionally retaining clock models from earlier frames.
+fn publish_hd_clock(
+    cache: &mut ModelCache,
+    icons: &UiPresentationRuntime,
+    hd: &DroppedItemModel,
+    hd_first: bool,
+    max_array_layers: usize,
+) -> (u32, u32) {
+    let hd_key = ModelKey::Block {
+        hashed: false,
+        id: u32::MAX,
+    };
+    let (identifier, metadata) = icons.dial_icon_key("minecraft:clock", 0).unwrap();
+    let clock_key = ModelKey::icon(icons.item_icon(identifier, metadata).unwrap(), true);
+    cache.begin_frame();
+    cache.request(&hd_key);
+    cache.request(&clock_key);
+    cache.finish_demand();
+    let admit_hd = |cache: &mut ModelCache| {
+        cache
+            .model(hd_key.clone(), || Some(1), || Some(hd.clone()))
+            .unwrap()
+    };
+    let admit_clock = |cache: &mut ModelCache| {
+        DroppedItemPublisher::icon_model(cache, icons, identifier, metadata, true).unwrap()
+    };
+    let (hd_handle, clock_handle) = if hd_first {
+        (admit_hd(cache), admit_clock(cache))
+    } else {
+        let clock = admit_clock(cache);
+        (admit_hd(cache), clock)
+    };
+    let mut animation = DialModels::default();
+    animation.observe(icons, "minecraft:clock", 0);
+    animation.warm(cache, icons);
+    cache.finish_frame(assets::texture::policy::device_policy(), max_array_layers);
+    (hd_handle, clock_handle)
+}
+
+#[test]
+fn hd_items_and_every_current_clock_frame_fit_with_either_residency_order() {
+    let hd = DroppedItemModel::Sprite(render_model::DroppedItemSprite {
+        width: 2048,
+        height: 2048,
+        rgba8: vec![255; assets::texture::policy::MAX_IMAGE_BYTES].into(),
+    });
+    for hd_first in [false, true] {
+        for max_array_layers in [3, render_model::MAX_ITEM_LAYERS] {
+            let mut cache = ModelCache::default();
+            let mut icons = icons();
+            icons.set_dial_frames(inventory::DialFrames {
+                clock: Some(0),
+                ..Default::default()
+            });
+            if !hd_first {
+                cache.begin_frame();
+                cache.finish_demand();
+                let mut animation = DialModels::default();
+                animation.observe(&icons, "minecraft:clock", 0);
+                animation.warm(&mut cache, &icons);
+                cache.finish_frame(
+                    assets::texture::policy::device_policy(),
+                    render_model::MAX_ITEM_LAYERS,
+                );
+            }
+            for frame in 0..inventory::CLOCK_FRAMES * 2 {
+                icons.set_dial_frames(inventory::DialFrames {
+                    clock: Some(frame % inventory::CLOCK_FRAMES),
+                    ..Default::default()
+                });
+                let (identifier, metadata) = icons.dial_icon_key("minecraft:clock", 0).unwrap();
+                let previous = Arc::clone(&cache.shared);
+                let revision = cache.revision;
+                let (hd_handle, clock_handle) =
+                    publish_hd_clock(&mut cache, &icons, &hd, hd_first, max_array_layers);
+                assert_eq!(
+                    &cache.shared[hd_handle as usize], &hd,
+                    "HD item remains published"
+                );
+                assert_eq!(
+                    &cache.shared[clock_handle as usize],
+                    &icon_sprite(&icons, identifier, metadata, true).unwrap(),
+                    "current clock frame remains published"
+                );
+                if previous
+                    .get(clock_handle as usize)
+                    .is_none_or(|model| matches!(model, DroppedItemModel::Vacant))
+                {
+                    assert_ne!(
+                        cache.revision, revision,
+                        "newly visible cached frames trigger upload"
+                    );
+                }
+                let policy = assets::texture::policy::device_policy();
+                let side = cache
+                    .shared
+                    .iter()
+                    .filter_map(|model| model.atlas_side(policy))
+                    .max()
+                    .unwrap();
+                let layers = 1 + cache
+                    .shared
+                    .iter()
+                    .map(DroppedItemModel::texture_layers)
+                    .sum::<usize>();
+                let bytes = policy.page_bytes(side, side).unwrap() * layers;
+                assert!(bytes <= assets::texture::policy::MAX_SUBSCRIBER_BYTES);
+                assert!(layers <= max_array_layers);
+            }
+        }
+    }
 }

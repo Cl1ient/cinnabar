@@ -50,7 +50,7 @@ use bevy::{
 };
 use model_upload::PreparedModels;
 #[cfg(test)]
-use model_upload::{build_model, model_side};
+use model_upload::build_model;
 #[cfg(test)]
 use render_model::DroppedItemModel;
 use std::ops::Range;

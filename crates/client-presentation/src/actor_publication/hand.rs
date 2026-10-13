@@ -207,14 +207,13 @@ pub(super) fn vanilla_hand_source(
             .authority()
             .actor(runtime_id)
             .is_some_and(|actor| rig.animation_variables.uses_legacy_swing(actor));
-    let bare =
-        legacy && inputs.equipment_input.main.is_none() && inputs.equipment_input.off.is_none();
-    if !bare {
+    let bare = legacy && inputs.equipment_input.main.is_none();
+    if !bare || inputs.equipment_input.off.is_some() {
         native_pose.apply(&mut inputs);
     }
     let HandInputs {
         stream,
-        mut presentation,
+        presentation,
         equipment_input,
         owner_equipment,
         item_animation,
@@ -228,16 +227,8 @@ pub(super) fn vanilla_hand_source(
     } else {
         render_api::CombatVisuals::Modern
     };
-    let body_camera = if bare {
-        let rest = native_pose.rest_pose(&rig)?;
-        presentation.submission.input.previous_bones = Arc::clone(&rest);
-        presentation.submission.input.current_bones = rest;
-        Some(render_model::legacy_combat::legacy_first_person_arm(
-            hand.swing, hand.equip,
-        ))
-    } else {
-        None
-    };
+    let body_camera =
+        bare.then(|| render_model::legacy_combat::legacy_first_person_arm(hand.swing, hand.equip));
     let items = std::array::from_fn(|index| {
         let item = [equipment_input.main.as_ref(), equipment_input.off.as_ref()][index]?;
         let modern = item_animation.and_then(|mut render_input| {
@@ -279,7 +270,16 @@ pub(super) fn vanilla_hand_source(
             .map(|item| item.identifier.as_ref()),
     )
     .with_undrawn_main(items[0].is_some());
-    let body = equipment.mask_first_person(&presentation.submission, arms);
+    let body = if bare {
+        // The right arm uses rest geometry; offhand items retain their sampled native parent.
+        let mut arm = presentation.submission.clone();
+        let rest = native_pose.rest_pose(&rig)?;
+        arm.input.previous_bones = Arc::clone(&rest);
+        arm.input.current_bones = rest;
+        equipment.mask_first_person(&arm, arms)
+    } else {
+        equipment.mask_first_person(&presentation.submission, arms)
+    };
     (body.is_some() || items.iter().any(Option::is_some)).then_some(HandSource {
         presentation,
         body,

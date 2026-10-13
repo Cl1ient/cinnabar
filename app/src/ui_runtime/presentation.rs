@@ -20,9 +20,8 @@ use ui::{DpiScale, LoadingStage, SafeArea};
 #[cfg(test)]
 use client_ui::ui_runtime::presentation::{HudFrame, menu_artwork};
 use client_ui::ui_runtime::presentation::{UiPresentationError, UiPresentationRuntime};
-mod dials;
+pub(crate) mod dials;
 pub mod forms;
-pub(crate) use dials::advance_dials;
 pub mod publish;
 pub(crate) use forms::drive_menu_panorama;
 pub(crate) use publish::{

@@ -1,6 +1,10 @@
 //! Dial publication regressions through real completed physics observations.
 
 use super::*;
+use bevy::{
+    math::Quat,
+    prelude::{App, Update},
+};
 
 #[test]
 fn reanchor_tick_indices_do_not_synthesize_needle_updates() {

@@ -109,8 +109,8 @@ use {
             flush_server_form_network,
             gameplay_touch::drive_gameplay_touch_targets,
             presentation::{
-                advance_dials, drive_menu_panorama, observe_mount_jump_input, prepare_ui_runtime,
-                publish_ui_runtime,
+                dials::advance_dials, drive_menu_panorama, observe_mount_jump_input,
+                prepare_ui_runtime, publish_ui_runtime,
             },
         },
     },

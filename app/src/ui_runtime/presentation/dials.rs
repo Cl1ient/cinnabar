@@ -1,7 +1,12 @@
 //! Advances the local player's compass and clock needles once per tick and publishes the
 //! strip frames every dial icon shows.
 
-use bevy::{ecs::system::SystemParam, prelude::*};
+use bevy::{
+    ecs::system::SystemParam,
+    math::EulerRot,
+    prelude::{Local, Res, ResMut},
+    time::{Real, Time},
+};
 use client_shell::ui_resources::UiPresentationResource;
 use inventory::{ClockReading, CompassReading, DialFrames, DialNeedle};
 

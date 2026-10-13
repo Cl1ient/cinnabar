@@ -95,6 +95,7 @@ impl WorldStream {
         self.apply_ready();
         self.promote_deferred_ingress();
         self.expire_sub_chunk_deadlines(Instant::now());
+        self.request_due_sub_chunk_recoveries(Instant::now());
         self.pump_deferred_retries();
         self.dispatch_decode_jobs();
 

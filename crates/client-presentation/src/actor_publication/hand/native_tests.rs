@@ -45,14 +45,31 @@ pub(super) fn fixture_with_appearance(
     ),
     Arc<assets::RuntimeEntityAssets>,
 ) {
-    fixture_with_binding(main, clock, animated, true)
+    fixture_with_binding(main, clock, animated, true, false)
 }
 
+/// Adds clamped head rotation channels to the shared original player fixture.
+pub(super) fn fixture_with_rotation(
+    animated: bool,
+) -> (
+    (
+        WorldStream,
+        EquipmentRuntime,
+        ActorArtworkPages,
+        ActorEquipmentInput,
+    ),
+    Arc<assets::RuntimeEntityAssets>,
+) {
+    fixture_with_binding(None, false, animated, true, true)
+}
+
+/// Builds original player and item assets with optional binding, clock and rotation channels.
 fn fixture_with_binding(
     main: Option<&str>,
     clock: bool,
     animated: bool,
     bound: bool,
+    turning: bool,
 ) -> (
     (
         WorldStream,
@@ -116,6 +133,21 @@ fn fixture_with_binding(
         description["scripts"] = serde_json::json!({"animate":["clock"]});
         shield.1 = serde_json::to_vec(&json).unwrap();
         files.push(("animations/item_clock.json".into(), br#"{"format_version":"1.8.0","animations":{"animation.item_clock":{"loop":true,"animation_length":100,"anim_time_update":"query.anim_time + 0.25","bones":{"item":{"rotation":["query.anim_time * 40.0",0,0]}}}}}"#.to_vec()));
+    }
+    if turning {
+        let animation = files
+            .iter_mut()
+            .find(|(path, _)| &**path == "animations/player.animation.json")
+            .unwrap();
+        animation.1 = serde_json::to_vec(&serde_json::json!({
+            "format_version":"1.8.0", "animations": {"animation.player_test.swing": {
+                "loop":true, "bones": {
+                    "rightarm": {"rotation":[0,"query.head_y_rotation(10.0)",0]},
+                    "leftarm": {"rotation":[0,0,"query.life_time * 40.0"]}
+                }
+            }}
+        }))
+        .unwrap();
     }
     let compiled = pack_compiler::compile_actor_pack(files).unwrap().unwrap();
     let catalog = Arc::new(
@@ -372,6 +404,7 @@ fn native_hand_unbound_attachables_keep_actor_frame_during_owner_swing() {
         for off_hand in [false, true] {
             let ((mut stream, mut equipment, artwork, mut input), _) = fixture_with_binding(
                 (!off_hand).then_some("minecraft:shield"),
+                false,
                 false,
                 false,
                 false,

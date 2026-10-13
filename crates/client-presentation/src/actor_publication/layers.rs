@@ -14,6 +14,8 @@ pub(super) struct LayerPoses<'a> {
     pub combat_visuals: render_api::CombatVisuals,
     pub local_emote_pose: Option<&'a actor_animation::CustomEmotePose>,
     pub native_body_sampled: bool,
+    pub remote_skin_layers:
+        &'a std::collections::HashMap<u64, Arc<[actor_animation::SkinRenderLayer]>>,
     pub native_pose: &'a hand::NativePoseCache,
 }
 
@@ -47,6 +49,7 @@ pub(super) fn attach(
         combat_visuals: _,
         local_emote_pose,
         native_body_sampled,
+        remote_skin_layers,
         native_pose,
     } = poses;
     let LayerCaches {
@@ -159,9 +162,11 @@ pub(super) fn attach(
                     .flatten();
                 let java_layers =
                     java::posed(java_posed, runtime_id).map(|posed| posed.skin_layers.as_slice());
-                let native_layers = (runtime_id == local_runtime_id && native_body_sampled)
-                    .then(|| native_pose.skin_layers())
-                    .flatten();
+                let native_layers = if runtime_id == local_runtime_id && native_body_sampled {
+                    native_pose.skin_layers()
+                } else {
+                    remote_skin_layers.get(&runtime_id).map(AsRef::as_ref)
+                };
                 Some(emote_geometry::skin_layer_snapshot(
                     rig,
                     emote,

@@ -1,6 +1,7 @@
 use super::*;
 
 mod first_presentation;
+mod rotation;
 
 /// Captures only authored VM/controller/clock state that render evaluation must not commit.
 fn authored_state(store: &ActorAnimationStore) -> String {

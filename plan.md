@@ -1465,6 +1465,17 @@ inactive, allowing walking and jumping to interpolate between ticks. Active came
 clips still sample presentation input. Full native motion-query sampling and
 interpolation of ordinary channels mixed with active camera clips remain incomplete.
 
+Third-person player head yaw, pitch and body rotation now sample the same partial
+tick before relative yaw is clamped, including shortest-path angle wrapping.
+Unrelated animation channels retain their tick endpoints, and view changes discard
+the previous perspective's rotation history. Deterministic regressions cover local
+and remote players, clamp order, body catch-up and first-person pose isolation.
+Draw-only refreshes retain reset rotation history. Dormant camera clips preserve
+walking endpoints, including persona layers, and sampled spear poses complete
+their generated inputs before selection and channel evaluation.
+CI execution and rendered acceptance remain pending; broader motion-query parity
+and interpolation mixed with active camera clips remain incomplete.
+
 2026-10-04 user-requested custom emotes — **Incomplete native/Lunar parity**:
 the native four-slot JSON-UI wheel and remappable emote control select an original,
 local-only Twerk dance with a faster user-requested loop. The owned clip preserves skin

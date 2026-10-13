@@ -191,7 +191,8 @@ struct Builder<'a> {
     texture_policy: TexturePolicy,
     max_layers: usize,
     textures: HashMap<(String, u32, u32), Option<TextureSlot>>,
-    frame_storage: HashMap<TextureStorageKey, FrameStorage>,
+    /// Shares admitted frames and static failures across material destinations.
+    frame_storage: HashMap<TextureStorageKey, Option<FrameStorage>>,
     materials: HashMap<(String, u32), u32>,
     visuals: HashMap<String, BlockVisual>,
     gaps: OverlayGaps,

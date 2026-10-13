@@ -17,13 +17,16 @@ pub(super) struct FrameStorage {
     frame_count: u32,
 }
 
+#[cfg(test)]
+mod tests;
+
 impl Builder<'_> {
     /// Reuses cached source frames before checking capacity for new image reads.
     pub(super) fn load_texture(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
         let source = self.catalog.flipbook(key, selector).cloned();
         if let Some(source) = source.as_ref() {
             let storage_key = self.catalog.storage_key(key, Some(source))?;
-            if let Some(&storage) = self.frame_storage.get(&storage_key) {
+            if let Some(&Some(storage)) = self.frame_storage.get(&storage_key) {
                 if let Some(slot) = self.bind_frames(storage, Some(source), selector) {
                     return Some(slot);
                 }
@@ -41,11 +44,14 @@ impl Builder<'_> {
         }
         let storage_key = self.catalog.storage_key(key, None)?;
         let storage = match self.frame_storage.get(&storage_key) {
-            Some(&storage) => storage,
+            Some(&storage) => storage?,
             None => {
-                let available = self.remaining_capacity(key)?;
-                let texture = self.catalog.decode(key)?;
-                self.store_frames(key, storage_key, texture, None, available)?
+                let storage = self.remaining_capacity(key).and_then(|available| {
+                    let texture = self.catalog.decode(key)?;
+                    self.store_frames(key, storage_key.clone(), texture, None, available)
+                });
+                self.frame_storage.insert(storage_key, storage);
+                storage?
             }
         };
         self.bind_frames(storage, None, selector)
@@ -151,7 +157,7 @@ impl Builder<'_> {
             frame_start,
             frame_count,
         };
-        self.frame_storage.insert(storage_key, storage);
+        self.frame_storage.insert(storage_key, Some(storage));
         Some(storage)
     }
 

@@ -11,8 +11,7 @@ mod terrain;
 mod tint;
 use diagnostics::{FailureReason, TextureDiagnostics};
 use pack_runtime::pack_textures::{
-    MAX_CATALOG_ENTRIES, decode_pack_texture_with_policy, normalize_texture_path, parse_pack_json,
-    texture_key_paths,
+    decode_pack_texture_with_policy, normalize_texture_path, texture_key_paths,
 };
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
 
@@ -26,6 +25,8 @@ pub(super) struct TextureCatalog<'a> {
     destinations: HashMap<String, Vec<u32>>,
     flipbooks: HashMap<String, Vec<FlipbookSource>>,
     diagnostics: TextureDiagnostics,
+    #[cfg(test)]
+    pub(super) decode_attempts: std::cell::Cell<usize>,
 }
 
 /// Pixel-storage identity, independent of animation timing and atlas destinations.
@@ -83,6 +84,8 @@ impl<'a> TextureCatalog<'a> {
             destinations,
             flipbooks,
             diagnostics,
+            #[cfg(test)]
+            decode_attempts: std::cell::Cell::new(0),
         }
     }
 
@@ -154,6 +157,8 @@ impl<'a> TextureCatalog<'a> {
     /// Decodes an independent animation source with the destination tile's atlas tint.
     pub(super) fn decode_path(&self, key: &str, path: &str) -> Option<DecodedTexture> {
         let path = normalize_texture_path(path);
+        #[cfg(test)]
+        self.decode_attempts.set(self.decode_attempts.get() + 1);
         let mut texture = decode_pack_texture_with_policy(
             self.view,
             path,

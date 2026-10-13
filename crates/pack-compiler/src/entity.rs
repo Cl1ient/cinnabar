@@ -98,6 +98,18 @@ struct PendingGeometry {
 
 type SourcePayloads = BTreeMap<Box<str>, Box<[u8]>>;
 
+/// Validates a complete geometry document with the compiler's version and schema checks.
+pub(crate) fn validate_geometry_document(value: &Value) -> Result<(), AssetError> {
+    let source = "starter_skin.geo.json";
+    parse_geometry(
+        source,
+        Path::new(source),
+        value,
+        &mut BTreeMap::new(),
+        &mut BTreeMap::new(),
+    )
+}
+
 /// Compiles deterministic entity catalog and geometry payloads from the exact
 /// pinned local Bedrock resource pack. Source payloads remain local-only.
 pub fn compile_entity_assets(

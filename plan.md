@@ -7934,8 +7934,10 @@ local world presentation uses the shared actor preparation cache in both perspec
 
 Starter skin compilation selects standalone model definitions above legacy definitions
 at the geometry identifier boundary. This keeps classic skin previews from combining
-an obsolete inherited body with the current model. Authored coincident cubes and
-generic entity inheritance retain their existing behavior. Reports involving other
+an obsolete inherited body with the current model. The carrier emits classic and slim
+models in one modern geometry schema, resolving legacy inheritance before encoding.
+Authored coincident cubes and generic entity inheritance retain their existing
+behavior. Reports involving other
 custom entity models still need a reproducible model and pack stack; that parity
 acceptance remains incomplete.
 

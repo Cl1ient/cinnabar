@@ -61,12 +61,15 @@ fn spawn_remotes(stream: &mut WorldStream) {
             stream.authority().actor(id).is_some(),
             "remote spawn must commit"
         );
+    }
+    stream.prepare_actor_appearance_fixture();
+    for id in [2u64, 3] {
+        // Profiles publish only once their prepared appearance is ready.
         assert!(
             stream.authority().actor_player_profile(id).is_some(),
             "remote profile must commit"
         );
     }
-    stream.prepare_actor_appearance_fixture();
     stream.advance_actor_interpolation_frame(1);
     for id in [2u64, 3] {
         assert!(

@@ -386,11 +386,16 @@ pub(crate) fn prepare_ui_runtime(
                         .map(Vec3::from_array)
                 })
                 .unwrap_or_else(|| transform.translation());
+            let nametag_view = nametags::NametagView {
+                viewer_position,
+                camera_position: transform.translation(),
+                camera_forward: *transform.forward(),
+            };
             let mut tags = nametags::project_nametags(
                 &mut nametag_cache,
                 runtime.scoreboards(),
                 stream,
-                viewer_position,
+                nametag_view,
                 picked_nametag_actor(stream, &transform, collisions.as_deref(), &player_runtime),
                 actor_partial.0,
                 show_names && !tag_style.is_some_and(|style| style.hide_players),
@@ -417,7 +422,7 @@ pub(crate) fn prepare_ui_runtime(
                         .or_else(|| authority.actor_display_name(actor.unique_id))
                     && let Some(tag) = nametags::extract_nametag(
                         actor,
-                        viewer_position,
+                        nametag_view,
                         None,
                         name,
                         runtime.scoreboards(),

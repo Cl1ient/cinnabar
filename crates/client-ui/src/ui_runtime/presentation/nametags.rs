@@ -48,6 +48,15 @@ const NAMETAG_RECORDS_PER_LINE: usize = 2;
 /// Most lines one tag can consume in a scene, including its backing plates.
 const MAX_NAMETAG_LINES: usize = MAX_NAMETAG_RECORDS / NAMETAG_RECORDS_PER_LINE;
 
+/// Viewer feet control visibility and score range; the camera controls label draw order.
+#[derive(Clone, Copy, Debug)]
+pub struct NametagView {
+    pub viewer_position: Vec3,
+    pub camera_position: Vec3,
+    /// Unit forward vector from the camera rotation, pointing into the scene.
+    pub camera_forward: Vec3,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct NametagAnchor {
     pub(super) runtime_id: u64,
@@ -56,7 +65,8 @@ pub struct NametagAnchor {
     pub(super) lines: Arc<[Arc<str>]>,
     pub(super) depth_tested: bool,
     pub(super) text_alpha: f32,
-    pub(super) distance: f32,
+    /// Signed camera-space depth of the head anchor, independent of viewer distance.
+    pub(super) view_depth: f32,
 }
 
 impl NametagAnchor {
@@ -84,7 +94,7 @@ impl NametagTextCache {
     fn extract(
         &mut self,
         actor: &ActorSnapshot,
-        viewer_position: Vec3,
+        view: NametagView,
         picked_actor: Option<u64>,
         name: Arc<str>,
         scoreboards: &ui::ScoreboardStore,
@@ -94,7 +104,7 @@ impl NametagTextCache {
             return None;
         }
         let (position, distance_squared) =
-            nametag_geometry(actor, viewer_position, picked_actor, partial_tick)?;
+            nametag_geometry(actor, view.viewer_position, picked_actor, partial_tick)?;
         let near_score = distance_squared < SCORE_DISTANCE_SQUARED;
         let score = match actor.metadata.get(&METADATA_SCORE) {
             Some(ActorMetadataValue::String(score)) if near_score => Some(Arc::clone(score)),
@@ -112,12 +122,7 @@ impl NametagTextCache {
                 && same_score
                 && cached.scoreboard_revision == scoreboard_revision
             {
-                return nametag_with_lines(
-                    actor,
-                    position,
-                    distance_squared,
-                    Arc::clone(&cached.lines),
-                );
+                return nametag_with_lines(actor, position, view, Arc::clone(&cached.lines));
             }
         }
         let text = tag_text(actor, Arc::clone(&name), distance_squared, scoreboards);
@@ -131,7 +136,7 @@ impl NametagTextCache {
                 lines: Arc::clone(&lines),
             },
         );
-        nametag_with_lines(actor, position, distance_squared, lines)
+        nametag_with_lines(actor, position, view, lines)
     }
 }
 
@@ -266,10 +271,14 @@ fn nametag_lines(text: &str) -> Arc<[Arc<str>]> {
 fn nametag_with_lines(
     actor: &ActorSnapshot,
     position: Vec3,
-    distance_squared: f32,
+    view: NametagView,
     lines: Arc<[Arc<str>]>,
 ) -> Option<NametagAnchor> {
     if lines.is_empty() {
+        return None;
+    }
+    let view_depth = view.camera_forward.dot(position - view.camera_position);
+    if !view_depth.is_finite() {
         return None;
     }
     let sneaking = actor_flag(actor, ACTOR_FLAG_SNEAKING);
@@ -279,14 +288,14 @@ fn nametag_with_lines(
         lines,
         depth_tested: sneaking,
         text_alpha: if sneaking { DIM_TEXT_ALPHA } else { 1.0 },
-        distance: distance_squared.sqrt(),
+        view_depth,
     })
 }
 
 /// Extracts a visible tag using the scene's bounded line prefix.
 pub fn extract_nametag(
     actor: &ActorSnapshot,
-    viewer_position: Vec3,
+    view: NametagView,
     picked_actor: Option<u64>,
     name: Arc<str>,
     scoreboards: &ui::ScoreboardStore,
@@ -296,9 +305,9 @@ pub fn extract_nametag(
         return None;
     }
     let (position, distance_squared) =
-        nametag_geometry(actor, viewer_position, picked_actor, partial_tick)?;
+        nametag_geometry(actor, view.viewer_position, picked_actor, partial_tick)?;
     let text = tag_text(actor, name, distance_squared, scoreboards);
-    nametag_with_lines(actor, position, distance_squared, nametag_lines(&text))
+    nametag_with_lines(actor, position, view, nametag_lines(&text))
 }
 
 /// Rejects newline-only names before selection, while allowing a visible appended score.
@@ -329,7 +338,7 @@ pub fn project_nametags(
     cache: &mut NametagTextCache,
     scoreboards: &ui::ScoreboardStore,
     stream: &chunk_pipeline::WorldStream,
-    viewer_position: Vec3,
+    view: NametagView,
     picked_actor: Option<u64>,
     partial_tick: f32,
     show_players: bool,
@@ -348,7 +357,7 @@ pub fn project_nametags(
         .filter_map(|actor| {
             let name = stream.authority().actor_name_tag(actor.unique_id)?;
             let (_, distance_squared) =
-                nametag_geometry(actor, viewer_position, picked_actor, partial_tick)?;
+                nametag_geometry(actor, view.viewer_position, picked_actor, partial_tick)?;
             has_nametag_lines(actor, &name, distance_squared, scoreboards).then_some((
                 actor,
                 name,
@@ -370,14 +379,7 @@ pub fn project_nametags(
     candidates
         .into_iter()
         .filter_map(|(actor, name, _)| {
-            cache.extract(
-                actor,
-                viewer_position,
-                picked_actor,
-                name,
-                scoreboards,
-                partial_tick,
-            )
+            cache.extract(actor, view, picked_actor, name, scoreboards, partial_tick)
         })
         .collect()
 }
@@ -392,8 +394,8 @@ pub fn build_nametag_scene<'p>(
 ) -> NametagScene {
     let mut ordered: Vec<&NametagAnchor> = anchors.iter().collect();
     ordered.sort_by(|a, b| {
-        b.distance
-            .total_cmp(&a.distance)
+        b.view_depth
+            .total_cmp(&a.view_depth)
             .then(a.runtime_id.cmp(&b.runtime_id))
     });
     let requested_lines = ordered

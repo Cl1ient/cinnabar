@@ -1,5 +1,16 @@
 use super::*;
 
+mod view_depth;
+
+/// Uses a camera at the origin looking along -Z, with independently supplied viewer feet.
+fn view(viewer_position: Vec3) -> NametagView {
+    NametagView {
+        viewer_position,
+        camera_position: Vec3::ZERO,
+        camera_forward: Vec3::NEG_Z,
+    }
+}
+
 /// Returns a spawned player with an initialized render pose.
 fn actor() -> ActorSnapshot {
     let stream = actor_stream(1, None, 0);
@@ -88,7 +99,7 @@ pub(in crate::ui_runtime::presentation) fn anchor(name: &str) -> NametagAnchor {
             .into(),
         depth_tested: false,
         text_alpha: 1.0,
-        distance: 5.0,
+        view_depth: 5.0,
     }
 }
 
@@ -131,7 +142,7 @@ fn java_head_clearance_and_sneaking_offsets_keep_the_label_world_scale() {
     assert!((tag_height(&actor) - 2.175).abs() < 1e-6);
     let tag = extract_nametag(
         &actor,
-        Vec3::new(0.0, 0.0, 5.0),
+        view(Vec3::new(0.0, 0.0, 5.0)),
         None,
         "AB".into(),
         &ui::ScoreboardStore::default(),
@@ -220,7 +231,7 @@ fn projected_tags_hide_the_local_viewer_and_mounts_carrying_passengers() {
     let mut cache = NametagTextCache::default();
     let boards = ui::ScoreboardStore::default();
     let project = |cache: &mut NametagTextCache, stream: &chunk_pipeline::WorldStream| {
-        project_nametags(cache, &boards, stream, Vec3::ZERO, None, 1.0, true)
+        project_nametags(cache, &boards, stream, view(Vec3::ZERO), None, 1.0, true)
     };
     let tags = project(&mut cache, &stream);
     assert_eq!(
@@ -342,7 +353,7 @@ fn oversized_tags_render_a_prefix_within_the_scene_budget() {
 fn oversized_tags_use_the_budget_left_by_earlier_tags() {
     let mut first = anchor("AB");
     first.position.x = 1.0;
-    first.distance = 8.0;
+    first.view_depth = 8.0;
     let first_records = NAMETAG_RECORDS_PER_LINE + 1;
     let remaining_lines = (MAX_NAMETAG_RECORDS - first_records) / NAMETAG_RECORDS_PER_LINE;
     let mut oversized = anchor(&"A\n".repeat(remaining_lines + 2));
@@ -393,14 +404,14 @@ fn sneaking_preserves_plate_opacity_and_selects_tested_glyphs() {
 fn ordinary_and_sneaking_labels_draw_together_back_to_front() {
     let mut far = anchor("far");
     far.runtime_id = 2;
-    far.distance = 8.0;
+    far.view_depth = 8.0;
     far.position.x = 8.0;
     let mut sneak = anchor("sneak");
     sneak.depth_tested = true;
-    sneak.distance = 9.0;
+    sneak.view_depth = 9.0;
     sneak.position.x = 9.0;
     let mut near = anchor("near");
-    near.distance = 2.0;
+    near.view_depth = 2.0;
     near.position.x = 2.0;
     let scene = scene(&[near, sneak, far]);
     assert_eq!(
@@ -419,51 +430,6 @@ fn ordinary_and_sneaking_labels_draw_together_back_to_front() {
             .collect::<Vec<_>>(),
         [1, 1, 0, 0, 1, 0, 0, 1]
     );
-}
-
-#[test]
-fn nearer_plates_attenuate_farther_text_in_every_sneak_combination() {
-    for far_sneaking in [false, true] {
-        for near_sneaking in [false, true] {
-            let mut far = anchor("AB");
-            far.runtime_id = 2;
-            far.position.z = -8.0;
-            far.distance = 8.0;
-            far.depth_tested = far_sneaking;
-            far.text_alpha = if far_sneaking { DIM_TEXT_ALPHA } else { 1.0 };
-            let mut near = anchor("AB");
-            near.position.z = -4.0;
-            near.distance = 4.0;
-            near.depth_tested = near_sneaking;
-            near.text_alpha = if near_sneaking { DIM_TEXT_ALPHA } else { 1.0 };
-            let scene = scene(&[near, far]);
-            let mut pixel = 0.0;
-            let mut depth = f32::INFINITY;
-            // Both plates cover this pixel; the far glyph has ink and the near glyph is blank.
-            for record in &scene.records {
-                let coverage = if record.text != 0 && record.anchor[2] == -4.0 {
-                    0.0
-                } else {
-                    1.0
-                };
-                let alpha = record.color[3] * coverage;
-                let tested = record.depth_tested != 0;
-                let at = -record.anchor[2];
-                if alpha <= render_model::NAMETAG_ALPHA_CUTOFF || (tested && at > depth) {
-                    continue;
-                }
-                pixel = record.color[0] * alpha + pixel * (1.0 - alpha);
-                if tested && record.text != 0 {
-                    depth = at;
-                }
-            }
-            let far_ink = if far_sneaking { DIM_TEXT_ALPHA } else { 1.0 };
-            assert!(
-                (pixel - far_ink * 0.75).abs() < 1e-6,
-                "far sneak {far_sneaking}, near sneak {near_sneaking}: {pixel}"
-            );
-        }
-    }
 }
 
 #[test]
@@ -526,7 +492,7 @@ fn empty_names_hide_players_without_screen_coordinate_visibility_rules() {
     assert!(
         extract_nametag(
             &actor,
-            eye,
+            view(eye),
             None,
             "p".into(),
             &ui::ScoreboardStore::default(),
@@ -537,7 +503,7 @@ fn empty_names_hide_players_without_screen_coordinate_visibility_rules() {
     assert!(
         extract_nametag(
             &actor,
-            eye,
+            view(eye),
             None,
             "".into(),
             &ui::ScoreboardStore::default(),
@@ -554,7 +520,7 @@ fn a_viewer_at_the_anchor_keeps_the_screen_aligned_tag() {
     assert!(
         extract_nametag(
             &actor,
-            eye,
+            view(eye),
             None,
             "p".into(),
             &ui::ScoreboardStore::default(),
@@ -678,7 +644,7 @@ fn long_formatted_server_tags_keep_every_line() {
     assert!(text.len() > ui_screens::text::MAX_PRESENTED_TEXT_BYTES);
     let anchor = extract_nametag(
         &actor(),
-        Vec3::new(0.0, 1.62, 5.0),
+        view(Vec3::new(0.0, 1.62, 5.0)),
         None,
         text.into(),
         &ui::ScoreboardStore::default(),
@@ -699,7 +665,7 @@ fn huge_tags_allocate_only_the_scene_consumable_nonempty_lines() {
     let (tag, allocations) = test_alloc::count(|| {
         extract_nametag(
             &actor,
-            Vec3::new(0.0, 1.62, 5.0),
+            view(Vec3::new(0.0, 1.62, 5.0)),
             None,
             Arc::clone(&name),
             &scoreboards,
@@ -732,7 +698,7 @@ fn projection_limits_extraction_to_the_nearest_tags_and_reuses_their_text() {
             cache,
             &boards,
             &stream,
-            Vec3::new(0.0, 1.62, 5.0),
+            view(Vec3::new(0.0, 1.62, 5.0)),
             None,
             0.5,
             show_players,
@@ -771,7 +737,7 @@ fn cached_text_refreshes_pose_visibility_name_score_and_score_distance() {
     let eye = Vec3::new(0.0, 1.62, 5.0);
     let mut cache = NametagTextCache::default();
     let first = cache
-        .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+        .extract(&actor, view(eye), None, Arc::clone(&name), &boards, 0.5)
         .unwrap();
     actor.position[0] = 1.0;
     actor.metadata.insert(
@@ -780,7 +746,7 @@ fn cached_text_refreshes_pose_visibility_name_score_and_score_distance() {
     );
     let (moved, allocations) = test_alloc::count(|| {
         cache
-            .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+            .extract(&actor, view(eye), None, Arc::clone(&name), &boards, 0.5)
             .unwrap()
     });
     assert_eq!(allocations, 0);
@@ -793,7 +759,7 @@ fn cached_text_refreshes_pose_visibility_name_score_and_score_distance() {
         .insert(0, ActorMetadataValue::Flags(1 << ACTOR_FLAG_INVISIBLE));
     assert!(
         cache
-            .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+            .extract(&actor, view(eye), None, Arc::clone(&name), &boards, 0.5)
             .is_none()
     );
     actor.metadata.remove(&0);
@@ -801,13 +767,13 @@ fn cached_text_refreshes_pose_visibility_name_score_and_score_distance() {
         .metadata
         .insert(METADATA_SCORE, ActorMetadataValue::String("8 wins".into()));
     let changed = cache
-        .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+        .extract(&actor, view(eye), None, Arc::clone(&name), &boards, 0.5)
         .unwrap();
     assert_eq!(changed.lines[1].as_ref(), "8 wins");
     let far = cache
         .extract(
             &actor,
-            Vec3::new(0.0, 1.62, 20.0),
+            view(Vec3::new(0.0, 1.62, 20.0)),
             None,
             Arc::clone(&name),
             &boards,
@@ -816,7 +782,7 @@ fn cached_text_refreshes_pose_visibility_name_score_and_score_distance() {
         .unwrap();
     assert_eq!(far.lines.len(), 1);
     let renamed = cache
-        .extract(&actor, eye, None, "Other".into(), &boards, 0.5)
+        .extract(&actor, view(eye), None, "Other".into(), &boards, 0.5)
         .unwrap();
     assert_eq!(renamed.lines[0].as_ref(), "Other");
     actor
@@ -824,7 +790,7 @@ fn cached_text_refreshes_pose_visibility_name_score_and_score_distance() {
         .insert(METADATA_SCORE, ActorMetadataValue::String("".into()));
     assert_eq!(
         cache
-            .extract(&actor, eye, None, name, &boards, 0.5)
+            .extract(&actor, view(eye), None, name, &boards, 0.5)
             .unwrap()
             .lines
             .len(),
@@ -867,14 +833,14 @@ fn cached_below_name_scores_follow_scoreboard_updates_and_clears() {
             )
             .unwrap();
         let tag = cache
-            .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+            .extract(&actor, view(eye), None, Arc::clone(&name), &boards, 0.5)
             .unwrap();
         assert_eq!(tag.lines[1].as_ref(), format!("{score} wins"));
     }
     boards.clear();
     assert_eq!(
         cache
-            .extract(&actor, eye, None, name, &boards, 0.5)
+            .extract(&actor, view(eye), None, name, &boards, 0.5)
             .unwrap()
             .lines
             .len(),
@@ -887,7 +853,7 @@ fn long_server_tag_lines_render_bounded_utf8_prefixes() {
     for text in ["A".repeat(20_000), "界".repeat(20_000 / "界".len() + 1)] {
         let tag = extract_nametag(
             &actor(),
-            Vec3::new(0.0, 1.62, 5.0),
+            view(Vec3::new(0.0, 1.62, 5.0)),
             None,
             Arc::from(text.as_str()),
             &ui::ScoreboardStore::default(),
@@ -913,7 +879,7 @@ fn long_formatted_lines_keep_the_aggregate_multiline_budget() {
     let line = "§aA§bB".repeat(ui::MAX_TEXT_SPANS / 2 + 1);
     let tag = extract_nametag(
         &actor(),
-        Vec3::new(0.0, 1.62, 5.0),
+        view(Vec3::new(0.0, 1.62, 5.0)),
         None,
         format!("{line}\n{line}").into(),
         &ui::ScoreboardStore::default(),

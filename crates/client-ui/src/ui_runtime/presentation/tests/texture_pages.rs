@@ -548,7 +548,7 @@ fn session_glyph_sheets_extend_the_font_and_reset_with_the_session() {
         lines: vec![Arc::from("\u{e005}")].into(),
         depth_tested: false,
         text_alpha: 1.0,
-        distance: 5.0,
+        view_depth: 5.0,
     }]);
     let before = presentation.nametag_scene();
     let mut rgba8 = vec![0u8; 128 * 128 * 4];

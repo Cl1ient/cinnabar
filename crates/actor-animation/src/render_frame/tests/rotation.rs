@@ -32,6 +32,10 @@ fn compiled_fixture(limit: f32) -> assets::CompiledEntityAssets {
         } else {
             ops.push(MolangOp::LoadQuery(symbol));
         }
+        if symbol == 4 {
+            // Composition mirrors authored X offsets; expose the query's original value.
+            ops.push(MolangOp::Negate);
+        }
         reads.push(expressions.len() as u32);
         expressions.push(CompiledMolangExpression {
             first_op,

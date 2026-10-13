@@ -38,6 +38,7 @@ pub(super) struct SampledBodies<'a> {
     pub local_emote_pose: Option<actor_animation::CustomEmotePose>,
     pub java_posed: Vec<java::Posed>,
     pub native_body_sampled: bool,
+    pub remote_skin_layers: std::collections::HashMap<u64, Arc<[actor_animation::SkinRenderLayer]>>,
     pub occlusion: occlusion::PreparationWork,
     pub render_frame: Option<actor_animation::ActorRenderFrame<'a>>,
 }
@@ -81,6 +82,7 @@ pub(super) fn sample<'a>(
         })
         .flatten();
     let mut native_body_sampled = false;
+    let mut remote_skin_layers = std::collections::HashMap::new();
     let mut occlusion_work = occlusion::PreparationWork::default();
     let mut render_frame = stream.map(|stream| stream.authority().actor_render_frame(partial_tick));
     let (local_runtime_id, actor_session_id, dimension, remotes, canonical_local, unrigged_actors) =
@@ -185,6 +187,16 @@ pub(super) fn sample<'a>(
                                 );
                                 native_body_sampled = true;
                             }
+                            if !local
+                                && !java_applied
+                                && let Some(frame) = render_frame.as_mut()
+                                && let Some(skin) = hand::NativePoseCache::apply_frame_body(
+                                    frame,
+                                    &mut presentation,
+                                )
+                            {
+                                remote_skin_layers.insert(rig.actor.runtime_id, skin);
+                            }
                             preparation::register_player_skin(
                                 &mut presentation,
                                 &rig,
@@ -234,6 +246,7 @@ pub(super) fn sample<'a>(
         local_emote_pose,
         java_posed,
         native_body_sampled,
+        remote_skin_layers,
         occlusion: occlusion_work,
         render_frame,
     }

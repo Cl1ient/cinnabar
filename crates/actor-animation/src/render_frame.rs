@@ -205,14 +205,17 @@ impl<'a> ActorRenderFrame<'a> {
 
     /// Samples the native body and its persona skeletons once under the same frame budget.
     pub fn layers_with_skin(&mut self, runtime_id: u64) -> Option<ActorRenderLayers<'a>> {
-        Self::sample(
+        let sampled = Self::sample(
             self.store,
             self.actors,
             (self.camera_rotation, self.camera_position, self.alpha),
             runtime_id,
             &mut self.remaining_ops,
             true,
-        )
+        )?;
+        self.sampled_layers
+            .insert(runtime_id, Some(sampled.render.clone()));
+        Some(sampled)
     }
 }
 
@@ -472,7 +475,6 @@ impl ActorAnimationStore {
             .map(|progress| progress.bedrock_progress(partial_tick));
         let swing_changed = state.samples_swing_poses
             && swing.is_some_and(|value| value != frame.motion.input.attack_time);
-        let body_swing_changed = frame.samples_swing_poses && swing_changed;
         let swell_changed = frame.needs_swell_sampling(actor);
         let rotation_changed = frame.needs_rotation_sampling();
         let motion_changed = swell_changed || rotation_changed;
@@ -560,9 +562,10 @@ impl ActorAnimationStore {
             );
         }
         tick::set_item_rotation_factor(&layout.engine, &mut variables);
+        let body_swing_changed = frame.samples_swing_poses && swing_changed;
         let isolated_motion = motion_changed
             && !(frame.samples_camera_poses && camera_inputs_changed)
-            && !swing_changed;
+            && !body_swing_changed;
         let mut endpoints: Option<(MotionEndpoint<'_>, MotionEndpoint<'_>)> = if isolated_motion {
             let amount = actor.creeper_swell_amount(partial_tick);
             let Ok(previous) = previous_motion.sample(
@@ -820,8 +823,20 @@ impl ActorAnimationStore {
                     if let std::collections::btree_map::Entry::Vacant(entry) =
                         sampled_geometries.entry(geometry)
                     {
-                        let (layer_evaluator, layer_variables) = endpoints
-                            .as_ref()
+                        let layer_isolated = endpoints.is_none()
+                            || match camera::layer_motion_isolated(
+                                &evaluator,
+                                clips,
+                                geometry,
+                                camera_inputs_changed,
+                                swing_changed,
+                                &mut budget,
+                            ) {
+                                Ok(isolated) => isolated,
+                                Err(_) => return Some(completed()),
+                            };
+                        let layer_endpoints = endpoints.as_ref().filter(|_| layer_isolated);
+                        let (layer_evaluator, layer_variables) = layer_endpoints
                             .map_or((&evaluator, &variables), |(_, current)| {
                                 (&current.evaluator, &current.variables)
                             });
@@ -838,7 +853,7 @@ impl ActorAnimationStore {
                         let Some(Some(skeleton)) = state.layer_skeletons.get(&geometry) else {
                             return Some(completed());
                         };
-                        let sampled_mask = (sampled_clips.is_some() || endpoints.is_some())
+                        let sampled_mask = (sampled_clips.is_some() || layer_endpoints.is_some())
                             .then_some(state.motion_sampling.as_ref())
                             .flatten()
                             .map(|sampling| {
@@ -847,16 +862,14 @@ impl ActorAnimationStore {
                                     &skeleton.names,
                                     clips
                                         .iter()
-                                        .chain(
-                                            endpoints.as_ref().map_or(&[][..], |(previous, _)| {
-                                                previous.clips.as_slice()
-                                            }),
-                                        )
+                                        .chain(layer_endpoints.map_or(&[][..], |(previous, _)| {
+                                            previous.clips.as_slice()
+                                        }))
                                         .copied(),
                                     Some(geometry),
                                 )
                             });
-                        let previous_local = if let Some((previous, _)) = endpoints.as_ref() {
+                        let previous_local = if let Some((previous, _)) = layer_endpoints {
                             let Ok(sampled_previous) = render::sample_layer_local(
                                 &previous.evaluator,
                                 &previous.variables,

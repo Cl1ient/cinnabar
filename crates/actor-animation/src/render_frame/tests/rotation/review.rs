@@ -1,4 +1,6 @@
 use super::*;
+
+mod selected_geometry;
 use assets::{
     CompiledEntityAssets, EntityAssetKind, EntityAssetSymbol, MolangSymbol, MolangSymbolKind,
 };
@@ -386,4 +388,71 @@ fn camera_sampling_completes_spear_posture_with_the_interpolated_pitch() {
         )
         .unwrap();
     assert!((sampled.render[0].pose[0].translation_scale[1] + 115.0).abs() < 1.0e-4);
+}
+
+#[test]
+fn inactive_swing_consumers_preserve_turning_players_walk_endpoints() {
+    for visibility in [false, true] {
+        let mut compiled = compiled_fixture(180.0);
+        camera_clip(&mut compiled, false);
+        let attack = symbol(
+            &mut compiled,
+            MolangSymbolKind::Variable,
+            "variable.attack_time",
+        );
+        let attack = expression(&mut compiled, &[MolangOp::LoadVariable(attack)], 1);
+        if visibility {
+            compiled.render.visibility = vec![assets::EntityRenderVisibility {
+                pattern: "rightitem".into(),
+                condition: attack,
+            }]
+            .into();
+            compiled.render.layers[0].visibility_count = 1;
+        } else {
+            let key = compiled.animation_keyframes.last_mut().unwrap();
+            key.expressions = [Some(attack), None, None];
+        }
+        let context = ActorTickContext {
+            is_local: true,
+            is_local_player: true,
+            ..Default::default()
+        };
+        let (mut store, mut actors) = fixture_with(compiled, 0.0, context.clone());
+        actors.get_mut(&1).unwrap().yaw = 90.0;
+        actors.get_mut(&1).unwrap().head_yaw = 90.0;
+        store.advance_tick(&actors, None, Some(1), true, true, |_| context.clone());
+        let rig = store.get(1).unwrap();
+        let previous = rig.previous[0].rotation;
+        let current = rig.current[0].rotation;
+        assert_ne!(previous, current);
+        store.sync_local_swing(
+            1,
+            LocalSwingProgress {
+                bedrock: [0.0, 0.5],
+                java: [0.0, 0.5],
+                frame_alpha: None,
+            },
+        );
+        for alpha in [0.0, 0.25, 0.75] {
+            let layer = sample(&store, &actors[&1], alpha);
+            assert_eq!(layer.previous_pose[0].rotation, previous);
+            assert_eq!(layer.pose[0].rotation, current);
+            if visibility {
+                assert_eq!(layer.hidden_bones.is_empty(), alpha > 0.0);
+            }
+        }
+    }
+}
+
+#[test]
+fn body_sampling_retains_render_layers_under_the_same_frame_budget() {
+    let (mut store, mut actors) = fixture(10.0, 0.0);
+    actors.get_mut(&1).unwrap().head_yaw = 90.0;
+    store.advance_tick(&actors, None, None, true, true, |_| Default::default());
+    let mut frame = ActorRenderFrame::new(&store, &actors, [0.0; 2], [0.0; 3], 0.05);
+    let body = frame.layers_with_skin(1).unwrap();
+    frame.set_remaining_ops(0);
+    let render = frame.layers(1).unwrap();
+    assert_eq!(render, body.render);
+    assert_eq!(frame.remaining_ops(), 0);
 }

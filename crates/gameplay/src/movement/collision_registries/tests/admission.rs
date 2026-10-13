@@ -19,14 +19,14 @@ fn tag(bytes: &mut Vec<u8>, kind: u8, name: &str) {
     text(bytes, name);
 }
 
-/// Declares binary axes; large values exceed the byte budget before expansion.
+/// Declares binary axes whose retained property names exceed the expansion byte budget.
 fn large_definition(axes: u32, large_values: bool) -> Vec<u8> {
     let mut bytes = vec![10, 0];
     tag(&mut bytes, 9, "properties");
     bytes.extend([10, (axes * 2) as u8]);
     for index in 0..axes {
         tag(&mut bytes, 8, "name");
-        text(&mut bytes, &format!("test:axis_{index}"));
+        text(&mut bytes, &format!("test:axis_{index:064}"));
         tag(&mut bytes, 9, "enum");
         if large_values {
             bytes.extend([8, 4]);

@@ -69,7 +69,6 @@ pub use presentation::{
     configured_present_mode, frame_rate_target, initial_present_mode, select_present_mode,
     vrr_ceiling,
 };
-pub use render_api::{UI_STYLE_COVERAGE_PAINT, UiCoveragePaint};
 pub use ui::{
     MAX_UI_BATCHES, MAX_UI_DRAW_BYTES, MAX_UI_FIXED_TEXTURE_BYTES, MAX_UI_INDICES,
     MAX_UI_TEXTURE_BYTES, MAX_UI_TEXTURE_LAYERS, MAX_UI_TEXTURE_SIDE, MAX_UI_VERTICES,

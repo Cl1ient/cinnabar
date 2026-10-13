@@ -7695,6 +7695,7 @@ dependencies = [
  "json-ui",
  "pack-json",
  "rayon",
+ "render-api",
  "render-model",
  "resource-pack",
  "serde_json",

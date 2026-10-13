@@ -47,8 +47,7 @@ fn rounded_geometry_cache_evicts_only_the_coldest_entry() {
 
 /// Returns the vertex's visible straight color after evaluating its coverage paint.
 fn painted_color(vertex: &ui::UiMeshVertex) -> Option<[u8; 4]> {
-    let paint =
-        render_model::UiCoveragePaint::from_vertex_colors(vertex.color, vertex.overlay_color);
+    let paint = render_api::UiCoveragePaint::from_vertex_colors(vertex.color, vertex.overlay_color);
     let sample = paint.sample(vertex.uv[0], [vertex.uv[1], vertex.model_light]);
     (sample[3] > 0.0).then(|| {
         [

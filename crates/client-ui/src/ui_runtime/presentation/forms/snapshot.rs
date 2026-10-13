@@ -98,11 +98,9 @@ fn rasterize_offsets(input: &UiRenderInput, offset: impl Fn(usize) -> [f32; 2]) 
                     {
                         return None;
                     }
-                    if corners[0].style_flags & u32::from(render_model::UI_STYLE_COVERAGE_PAINT)
-                        != 0
+                    if corners[0].style_flags & u32::from(render_api::UI_STYLE_COVERAGE_PAINT) != 0
                     {
-                        let paint =
-                            render_model::UiCoveragePaint::from_vertex_colors(color, overlay);
+                        let paint = render_api::UiCoveragePaint::from_vertex_colors(color, overlay);
                         return Some(paint.sample(u, [v, coverage]));
                     }
                     if corners[0].style_flags & UI_STYLE_RADIAL_GRADIENT != 0 {

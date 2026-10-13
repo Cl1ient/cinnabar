@@ -10,6 +10,7 @@ use client_shell::menu::settings_options::control_bindings::binding_keyboard_key
 use client_ui::ui_runtime::interaction::dispatch_inventory_key;
 use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use ui::UiPoint;
+use ui_screens::container_actions::{InventoryCellHit, Widget};
 use {
     client_ui::ui_runtime::{
         UiRuntime,
@@ -52,7 +53,7 @@ pub(super) fn apply_screen_presses(
         frame,
         &[],
         focus,
-        (now_millis, &mut false),
+        now_millis,
     );
 }
 
@@ -69,7 +70,7 @@ pub(super) fn apply_inventory_pointer(
     (presses, shift, control): (Vec<semantic_input::KeyboardKey>, bool, bool),
     notches: &[(f32, MouseScrollUnit)],
     mut focus: Option<&mut client_state::CursorFocus>,
-    (now_millis, close_armed): (u64, &mut bool),
+    now_millis: u64,
 ) {
     let primary_pressed = mouse_buttons.just_pressed(MouseButton::Left);
     let secondary_pressed = mouse_buttons.just_pressed(MouseButton::Right);
@@ -94,30 +95,36 @@ pub(super) fn apply_inventory_pointer(
     let Some(position) = window.cursor_position() else {
         runtime.set_inventory_pointer_gui(None);
         runtime.screen_state_mut().hover = None;
+        runtime.screen_state_mut().container_close_armed = false;
         return;
     };
     let Ok(point) = UiPoint::new(position.x, position.y) else {
         runtime.set_inventory_pointer_gui(None);
         runtime.screen_state_mut().hover = None;
+        runtime.screen_state_mut().container_close_armed = false;
         return;
     };
     let physical_size = [window.physical_width(), window.physical_height()];
     let gui = presentation.inventory_gui_point(point, physical_size, window.scale_factor());
     runtime.set_inventory_pointer_gui(gui);
+    // A player mod's view, or a control of its overlay, owns the pointer (`modding`).
+    let mod_owned = presentation
+        .mod_ui()
+        .mod_screens_own([point.x(), point.y()]);
+    if mod_owned || screen == InventoryScreen::Book {
+        runtime.screen_state_mut().container_close_armed = false;
+    }
     // The screen's close button closes it on a release over the button it was pressed on.
     let on_close = gui
-        .zip(presentation.engine_container_frame())
-        .and_then(|(gui, frame)| {
-            json_ui::hit_test(&frame.hits, [f64::from(gui[0]), f64::from(gui[1])])
-                .filter(|hit| hit.pressed.is_some() && hit.pressed == frame.cancel_target)
-        })
-        .is_some();
+        .filter(|_| !mod_owned)
+        .and_then(|gui| presentation.engine_container_hit(gui))
+        == Some(InventoryCellHit::Widget(Widget::Close));
     if primary_pressed {
-        *close_armed = on_close;
+        runtime.screen_state_mut().container_close_armed = on_close;
     }
-    if *close_armed {
+    if runtime.screen_state().container_close_armed {
         if primary_released {
-            *close_armed = false;
+            runtime.screen_state_mut().container_close_armed = false;
             if on_close {
                 let _ = runtime.close_inventory(player_runtime);
                 if let Some(focus) = focus.as_deref_mut() {
@@ -127,10 +134,6 @@ pub(super) fn apply_inventory_pointer(
         }
         return;
     }
-    // A player mod's view, or a control of its overlay, owns the pointer (`modding`).
-    let mod_owned = presentation
-        .mod_ui()
-        .mod_screens_own([point.x(), point.y()]);
     let book_open = runtime.screen_state().book_open;
     let reader_mode = runtime
         .screen_state()
@@ -219,6 +222,9 @@ pub(super) fn apply_inventory_pointer(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 /// Wheel notches over an engine-drawn screen scroll the view under the pointer.
 pub(super) fn scroll_container(

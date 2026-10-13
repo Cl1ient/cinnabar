@@ -62,15 +62,8 @@ CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC="$toolchain/bin/$triple$min_sdk-clang
 stage_resources "$stage/assets/resources" "$libs/$(pin compiler_library)"
 rm -rf "$stage/assets/resources/prep-kit/bin"
 
-render() {
-    sed -e "s|@APPLICATION_ID@|$(pin application_id)|g" -e "s|@CLIENT_LIBRARY@|$client_library|g" \
-        -e "s|@PRODUCT_NAME@|$product|g" -e "s|@VERSION_CODE@|$version_code|g" \
-        -e "s|@VERSION_NAME@|$version|g" "$1" >"$2"
-    if grep -q '@[A-Z_]*@' "$2"; then
-        echo "unfilled template token in $2" >&2
-        exit 1
-    fi
-}
+# shellcheck source=render-template.sh
+source "$here/render-template.sh"
 mkdir -p "$out/java"
 render "$here/AndroidManifest.xml" "$out/AndroidManifest.xml"
 for source in "$here"/*.java; do

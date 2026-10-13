@@ -37,6 +37,7 @@ impl TouchPointer {
         }
     }
 
+    /// Whether this finger holds the emulated pointer.
     fn owns(&self, id: u64) -> bool {
         self.owner == Some(id)
     }
@@ -59,8 +60,11 @@ pub(crate) fn emulate_ui_pointer(
     let Ok((entity, mut window)) = windows.single_mut() else {
         return;
     };
-    let pointer_screen = ui.is_some_and(|ui| ui.inventory_open() || ui.server_forms().owns_input())
-        && !menu.is_some_and(|menu| menu.is_visible());
+    let pointer_screen = ui.is_some_and(|ui| {
+        (ui.inventory_open() || ui.server_forms().owns_input())
+            && (!menu.is_some_and(|menu| menu.is_visible())
+                || ui.server_forms().settings_form_active())
+    });
     let mut edge = |state| {
         buttons.write(MouseButtonInput {
             button: MouseButton::Left,
@@ -88,6 +92,101 @@ pub(crate) fn emulate_ui_pointer(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::{
+        ecs::message::MessageCursor,
+        prelude::{App, Messages, Update, Vec2},
+    };
+    use client_ui::ui_runtime::{SequencedUiEvent, UiRuntime};
+
+    /// Creates a retained form whose ownership the pointer adapter must follow.
+    fn form_runtime(settings: bool) -> UiRuntime {
+        let mut runtime = UiRuntime::new(1);
+        runtime
+            .apply(
+                &mut player_state::PlayerState::new(1),
+                SequencedUiEvent {
+                    session_id: 1,
+                    fifo_sequence: 1,
+                    local_millis: 0,
+                    server_tick: None,
+                    event: protocol::UiEvent::Form(protocol::FormRequestEvent {
+                        form_id: 7,
+                        kind: if settings {
+                            protocol::FormKind::ServerSettings
+                        } else {
+                            protocol::FormKind::Menu
+                        },
+                        title: None,
+                        json: "{}".into(),
+                        model: protocol::ServerFormModel::TextMenu(protocol::TextMenuForm {
+                            title: "Test".into(),
+                            content: String::new(),
+                            buttons: vec!["Choose".into()].into(),
+                            button_images: [].into(),
+                            omitted_images: 0,
+                        }),
+                    }),
+                },
+            )
+            .unwrap();
+        runtime
+    }
+
+    #[test]
+    fn settings_form_over_the_menu_emits_touch_press_and_release() {
+        for (settings, visible, expected) in [
+            (true, true, true),
+            (false, true, false),
+            (false, false, true),
+        ] {
+            let mut menu = MenuRuntime::new(true, 2, "Test".into());
+            menu.set_visible(visible);
+            let mut app = App::new();
+            app.add_message::<TouchInput>()
+                .add_message::<MouseButtonInput>()
+                .insert_resource(UiRuntimeResource(form_runtime(settings)))
+                .insert_resource(menu)
+                .add_systems(Update, emulate_ui_pointer);
+            let entity = app
+                .world_mut()
+                .spawn((Window::default(), PrimaryWindow))
+                .id();
+            let position = Vec2::new(40.0, 50.0);
+            for phase in [TouchPhase::Started, TouchPhase::Ended] {
+                app.world_mut().write_message(TouchInput {
+                    phase,
+                    position,
+                    window: entity,
+                    force: None,
+                    id: 1,
+                });
+            }
+            app.update();
+            let mut cursor = MessageCursor::<MouseButtonInput>::default();
+            let edges = cursor
+                .read(app.world().resource::<Messages<MouseButtonInput>>())
+                .map(|event| (event.button, event.state, event.window))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                edges,
+                if expected {
+                    vec![
+                        (MouseButton::Left, ButtonState::Pressed, entity),
+                        (MouseButton::Left, ButtonState::Released, entity),
+                    ]
+                } else {
+                    Vec::new()
+                },
+                "settings={settings}, visible={visible}"
+            );
+            if expected {
+                assert_eq!(
+                    app.world().get::<Window>(entity).unwrap().cursor_position(),
+                    Some(position)
+                );
+            }
+        }
+    }
 
     /// Fingers that land outside a pointer screen, or a second finger, never press.
     #[test]

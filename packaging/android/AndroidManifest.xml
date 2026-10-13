@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- build-apk.sh fills the @TOKENS@ from runtime.json, Cargo.toml and the launcher's product name. -->
+<!-- build-apk.sh fills template values from runtime.json, Cargo.toml and the launcher's product name. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="@APPLICATION_ID@"
     android:versionCode="@VERSION_CODE@"

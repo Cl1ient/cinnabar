@@ -115,6 +115,8 @@ pub(in crate::compiler) fn compile_rule(
         template
     };
     set_model_visual(&mut visual, [materials[0]; 6], template);
+    // Keep crossed-plant semantics around the pod and flower geometry.
+    visual.kind = VisualKind::Cross;
     if !upper {
         visual.faces[BlockFace::Down as usize] = materials[1];
         visual.faces[BlockFace::Up as usize] = materials[2];

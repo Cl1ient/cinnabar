@@ -236,7 +236,7 @@ fn stems_grow_from_the_soil_and_keep_their_upright_sprite_when_attached() {
 }
 
 #[test]
-fn pitcher_pods_and_flowers_select_distinct_stage_and_half_art() {
+fn pitcher_pods_and_flowers_keep_plant_semantics_and_distinct_art() {
     let (runtime, records) = fixture();
     let mut count = 0;
     for record in records
@@ -256,6 +256,7 @@ fn pitcher_pods_and_flowers_select_distinct_stage_and_half_art() {
                 assert_eq!(runtime.resolve(mode, id).kind(), VisualKind::Invisible);
                 continue;
             }
+            assert_eq!(runtime.resolve(mode, id).kind(), VisualKind::Cross);
             let model = quads(&runtime, record, mode);
             if upper {
                 assert_eq!(model.len(), 2);

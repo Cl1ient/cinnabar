@@ -5,6 +5,8 @@ mod elytra_tests;
 #[path = "runtime/held_animation_tests.rs"]
 mod held_animation_tests;
 
+#[path = "runtime/legacy_combat_tests.rs"]
+mod legacy_combat_tests;
 #[path = "runtime/worn_texture_tests.rs"]
 mod worn_texture_tests;
 
@@ -422,11 +424,13 @@ fn player_body(runtime: &mut super::runtime::EquipmentRuntime) -> ActorRigSubmis
     }
 }
 
-/// An equipment runtime over a server pack's attachables, with no startup carriers.
-fn pack_runtime(
+/// Compiles original equipment sources into the entity and texture catalogs they share.
+fn pack_catalog(
     files: Vec<(Box<str>, Vec<u8>)>,
-) -> (super::runtime::EquipmentRuntime, ActorArtworkPages) {
-    use super::runtime::EquipmentRuntime;
+) -> (
+    Arc<assets::RuntimeEntityAssets>,
+    Arc<assets::RuntimeEquipmentCatalog>,
+) {
     let compiled = pack_compiler::compile_actor_pack(files)
         .unwrap()
         .expect("pack compiles");
@@ -439,6 +443,37 @@ fn pack_runtime(
         .unwrap(),
     );
     let entities = Arc::new(assets::RuntimeEntityAssets::from_compiled(compiled.entities).unwrap());
+    (entities, catalog)
+}
+
+/// An equipment runtime over synthetic startup attachables, ready for a later pack override.
+fn startup_runtime(
+    files: Vec<(Box<str>, Vec<u8>)>,
+) -> (super::runtime::EquipmentRuntime, ActorArtworkPages) {
+    let (entities, catalog) = pack_catalog(files);
+    let icons = Arc::new(
+        assets::RuntimeIconCatalog::decode(
+            &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
+        )
+        .unwrap(),
+    );
+    let (runtime, pages, _) = super::runtime::EquipmentRuntime::build(
+        entities,
+        Some(catalog),
+        icons,
+        None,
+        None,
+        ActorArtworkPages::default(),
+    );
+    (runtime, pages)
+}
+
+/// An equipment runtime over a server pack's attachables, with no startup carriers.
+fn pack_runtime(
+    files: Vec<(Box<str>, Vec<u8>)>,
+) -> (super::runtime::EquipmentRuntime, ActorArtworkPages) {
+    use super::runtime::EquipmentRuntime;
+    let (entities, catalog) = pack_catalog(files);
     let icons = Arc::new(
         assets::RuntimeIconCatalog::decode(
             &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
@@ -877,7 +912,7 @@ fn java_grips_ride_the_arm_and_skip_the_hurt_flash() {
 }
 
 #[test]
-fn sprite_items_and_worn_attachables_skip_the_hurt_overlay() {
+fn modern_sprite_items_and_worn_attachables_skip_the_hurt_overlay() {
     use super::runtime::{ActorEquipmentInput, HeldKind, StagedSessionIcons, WornItem};
     let (mut runtime, pages) = pack_runtime(crown_pack());
     let mut body = player_body(&mut runtime);
@@ -924,7 +959,7 @@ fn sprite_items_and_worn_attachables_skip_the_hurt_overlay() {
         ],
         ..Default::default()
     };
-    let layers = runtime.layers_for(&body, &input, None);
+    let layers = runtime.layers_for_profile(&body, &input, render_api::CombatVisuals::Modern, None);
     assert_eq!(layers.len(), 3);
     assert!(
         layers
@@ -954,5 +989,82 @@ fn sprite_items_and_worn_attachables_skip_the_hurt_overlay() {
             0
         };
         assert_eq!(layer.submission.overlay_rgba8, expected);
+    }
+}
+
+#[test]
+fn glinting_held_items_draw_the_item_glint_across_their_sprite_in_every_view() {
+    use super::runtime::{ActorEquipmentInput, HeldKind, StagedSessionIcons, WornItem};
+    let (mut runtime, pages) = pack_runtime(crown_pack());
+    let body = player_body(&mut runtime);
+    let plain = WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
+        grip: assets::item::grip::builtin_item_grip("test:gem"),
+        identifier: Arc::from("test:gem"),
+        metadata: 0,
+        damage: None,
+        kind: HeldKind::Other,
+        dye_rgb: None,
+        enchanted: false,
+    };
+    let items = session_items(vec![("test:gem", Default::default())], vec!["test:gem"]);
+    let staged = StagedSessionIcons::stage(Some(&items)).unwrap();
+    let (_, locations) = pages.with_equipment_rasters(staged.rasters());
+    runtime.set_session_items(Some(&items), Some(staged), locations);
+    let glinting = WornItem {
+        enchanted: true,
+        ..plain.clone()
+    };
+    let mut materials = |item: &WornItem| {
+        let input = ActorEquipmentInput {
+            main: Some(item.clone()),
+            off: Some(item.clone()),
+            ..Default::default()
+        };
+        let mut materials = runtime
+            .layers_for(&body, &input, None)
+            .iter()
+            .map(|layer| layer.submission.material)
+            .collect::<Vec<_>>();
+        materials.push(
+            runtime
+                .first_person_item(&body, item, actor_animation::ItemAnimationState::default())
+                .unwrap()
+                .presentation
+                .submission
+                .material,
+        );
+        materials.push(
+            runtime
+                .first_person_offhand(&body, item)
+                .unwrap()
+                .presentation
+                .submission
+                .material,
+        );
+        materials
+    };
+    let plain_materials = materials(&plain);
+    assert_eq!(plain_materials.len(), 4);
+    assert!(
+        plain_materials
+            .iter()
+            .all(|material| material.kind != assets::EntityRenderMaterial::Glint)
+    );
+    let glint_materials = materials(&glinting);
+    assert_eq!(glint_materials.len(), 4);
+    for (material, plain) in glint_materials.into_iter().zip(plain_materials) {
+        assert_eq!(material.kind, plain.kind);
+        assert_eq!(material.state, plain.state);
+        assert_eq!(material.glint.texture, render_model::GlintTexture::Item);
+        assert_eq!(material.glint.profile, render_api::CombatVisuals::Modern);
+        assert!(
+            material
+                .glint
+                .uv_scale
+                .iter()
+                .all(|&scale| scale > render_model::ITEM_GLINT_UV_SCALE),
+            "an atlas sprite spans less than its page, so the glint scale exceeds 0.5"
+        );
     }
 }

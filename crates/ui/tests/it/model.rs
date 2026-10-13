@@ -317,7 +317,7 @@ fn glint_sprite_flags_its_vertices() {
     assert!(
         glint
             .iter()
-            .all(|vertex| vertex.style_flags == ui::UI_STYLE_GLINT)
+            .all(|vertex| vertex.style_flags == u16::from(ui::UI_STYLE_GLINT))
     );
     assert_eq!(
         plain.iter().map(|vertex| vertex.uv).collect::<Vec<_>>(),
@@ -522,7 +522,7 @@ fn outline_text_selects_linear_sampler_without_changing_default_text_geometry() 
         linear
             .vertices
             .iter()
-            .all(|vertex| vertex.style_flags == ui::UI_STYLE_BILINEAR)
+            .all(|vertex| vertex.style_flags == u16::from(ui::UI_STYLE_BILINEAR))
     );
     assert_eq!(nearest.indices, linear.indices);
     for (nearest, linear) in nearest.vertices.iter().zip(&linear.vertices) {
@@ -549,7 +549,7 @@ fn native_text_modes_emit_gamma_and_distance_flags_with_their_sampler() {
         assert!(
             draw.vertices
                 .iter()
-                .all(|vertex| vertex.style_flags == flags)
+                .all(|vertex| vertex.style_flags == u16::from(flags))
         );
         assert_eq!(draw.vertices.len(), 8);
     }
@@ -859,7 +859,9 @@ fn private_use_glyphs_keep_sheet_colors_and_text_alpha() {
     });
     let colors = draw
         .vertices
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|quad| quad[0].color)
         .collect::<Vec<_>>();
     assert_eq!(

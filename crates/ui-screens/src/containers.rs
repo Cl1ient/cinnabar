@@ -20,7 +20,7 @@ use ui_engine::engine::{
 };
 use ui_engine::frame::EngineFrame;
 
-use crate::container_actions::InventoryCellHit;
+use crate::container_actions::{InventoryCellHit, Widget};
 use crate::container_data;
 use crate::container_kinds::{Cell, ContainerKind};
 use crate::container_source::{ContainerFrame, ContainerSource};
@@ -71,6 +71,9 @@ impl ScreenLayout {
     /// equal GUI px).
     pub fn hit(self, frame: &EngineFrame, gui: [f32; 2]) -> Option<InventoryCellHit> {
         let region = hit_test(&frame.hits, [f64::from(gui[0]), f64::from(gui[1])])?;
+        if !matches!(self, ScreenLayout::Book) && region.pressed.as_deref() == Some(CLOSE_BUTTON) {
+            return Some(InventoryCellHit::Widget(Widget::Close));
+        }
         let widget = || match self {
             ScreenLayout::Station(kind) => furnace_book::hit(kind.screen, region).or_else(|| {
                 container_data::widget_hit(kind.screen, region).map(InventoryCellHit::Widget)
@@ -382,13 +385,13 @@ struct ScreenCache {
     tree: Option<json_ui::ResolvedControl>,
     /// The tree's measurements at the laid root size, reused while scrolling.
     measures: json_ui::MeasureCache,
-    laid: Option<(ViewState, [f64; 2], Arc<json_ui::FormRender>)>,
+    laid: Option<(ViewState, json_ui::LayoutCacheKey, Arc<json_ui::FormRender>)>,
     /// The open screen's live bindings across data refreshes.
     binding: json_ui::BindState,
     /// Grid and factory templates kept across binds, so their unchanged instances stand.
     resolutions: json_ui::ResolveCache,
-    /// Font scale and language tables used by the retained measurements.
-    text: (f32, [usize; 3]),
+    /// Language tables used by the retained measurements.
+    language: [usize; 3],
     /// Layouts run for this screen, for cache tests.
     layouts: usize,
 }
@@ -453,14 +456,21 @@ impl ScreenCache {
                 laid: None,
                 binding: recipe_book::screen_binding(server_ui),
                 resolutions: json_ui::ResolveCache::default(),
-                text,
+                language: text.1,
                 layouts: 0,
             });
         }
         let cached = cache.as_mut()?;
-        let text_changed = cached.text != text;
+        let layout = json_ui::LayoutCacheKey::new(root, text.0, env);
+        let text_changed = cached.language != text.1;
+        let layout_changed = cached
+            .laid
+            .as_ref()
+            .is_some_and(|(_, previous, _)| *previous != layout);
         if text_changed {
-            cached.text = text;
+            cached.language = text.1;
+        }
+        if text_changed || layout_changed {
             cached.measures = json_ui::MeasureCache::default();
         }
         if cached.data.as_deref() != Some(data) {
@@ -493,17 +503,10 @@ impl ScreenCache {
             cached.laid = None;
         }
         // Hover, press and focus only filter the gated nodes; scroll lays out again.
-        let fresh = |(laid_view, laid_root, _): &(ViewState, [f64; 2], _)| {
-            !text_changed && laid_view.scroll == view.scroll && *laid_root == root
+        let fresh = |(laid_view, laid_layout, _): &(ViewState, json_ui::LayoutCacheKey, _)| {
+            !text_changed && laid_view.scroll == view.scroll && *laid_layout == layout
         };
         if !cached.laid.as_ref().is_some_and(fresh) {
-            if cached
-                .laid
-                .as_ref()
-                .is_some_and(|(_, laid_root, _)| *laid_root != root)
-            {
-                cached.measures = json_ui::MeasureCache::default();
-            }
             let tree = cached.bound_tree()?;
             let mut render =
                 json_ui::render_bound_gated(tree, root, env, view, &mut cached.measures);
@@ -533,7 +536,7 @@ impl ScreenCache {
                 cached.data = None;
             }
             cached.layouts += 1;
-            cached.laid = Some((view.clone(), root, Arc::new(render)));
+            cached.laid = Some((view.clone(), layout, Arc::new(render)));
         }
         cached
             .laid
@@ -698,7 +701,11 @@ pub fn screen_data(
                 .map(|slot| {
                     let stack = ledger.target_stack(InventoryTarget::Armor(slot));
                     cells
-                        .cell(stack, frame.armor_icons[usize::from(slot)], None)
+                        .cell(
+                            stack,
+                            frame.armor_icons[usize::from(slot)],
+                            frame.armor_durability[usize::from(slot)],
+                        )
                         .with("#empty_armor_image_visible", Scalar::Bool(stack.is_none()))
                 })
                 .collect();
@@ -781,6 +788,9 @@ fn station_cell<'a>(
     }
 }
 
+/// The button the pack's close (X) controls press, as `$close_button_to_button_id`.
+const CLOSE_BUTTON: &str = "button.menu_exit";
+
 /// The classic survival layout on desktop: no recipe book, no creative tabs.
 fn survival_globals(data: &mut DataSource, title: &str) {
     for (name, value) in [
@@ -793,6 +803,8 @@ fn survival_globals(data: &mut DataSource, title: &str) {
         ("#needs_crafting_table", false),
         ("#show_persistent_bundle_hover_text", true),
         ("#gamepad_helper_visible", false),
+        // Desktop screens show their close (X) button; it presses `CLOSE_BUTTON`.
+        ("#close_button_visible", true),
         ("#filtering_enabled", false),
     ] {
         data.set_global(name, Scalar::Bool(value));

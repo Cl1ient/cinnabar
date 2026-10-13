@@ -11,6 +11,7 @@ pub(super) struct LayerPoses<'a> {
     pub local_runtime_id: u64,
     pub local_equipment: &'a ActorEquipmentInput,
     pub java_posed: &'a [java::Posed],
+    pub combat_visuals: render_api::CombatVisuals,
     pub local_emote_pose: Option<&'a actor_animation::CustomEmotePose>,
     pub native_body_sampled: bool,
     pub native_pose: &'a hand::NativePoseCache,
@@ -43,6 +44,7 @@ pub(super) fn attach(
         local_runtime_id,
         local_equipment: local_equipment_input,
         java_posed,
+        combat_visuals: _,
         local_emote_pose,
         native_body_sampled,
         native_pose,
@@ -83,9 +85,7 @@ pub(super) fn attach(
             batch,
             equipment,
             stream,
-            local_runtime_id,
-            local_equipment_input,
-            java_posed,
+            &poses,
             (partial_tick, delta_seconds, glint_settings),
         );
     }

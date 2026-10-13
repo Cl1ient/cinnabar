@@ -1,5 +1,8 @@
 //! Isolated camera-item routing tests; no optional installed carriers or native art.
 
+#[path = "missing_artwork_tests.rs"]
+mod missing_artwork_tests;
+
 use actor_animation::ItemAnimationState;
 use bevy::math::Quat;
 use render_api::PoseGeneration;
@@ -10,6 +13,68 @@ use {
     super::*,
     render_model::equipment::{attach_to_bone, held_block_display},
 };
+
+#[test]
+fn held_block_faces_keep_local_glint_origins_after_atlas_placement() {
+    for atlas_side in [512, 1024] {
+        for authored in [false, true] {
+            let (mut runtime, _, item) = block_fixture();
+            let [width, height] = assets::BLOCK_ITEM_SHEET_SIZE;
+            let atlas = SpriteAtlas::pack(&[
+                IconSprite {
+                    width,
+                    height,
+                    rgba8: vec![255; usize::from(width) * usize::from(height) * 4].into(),
+                },
+                IconSprite {
+                    width: atlas_side,
+                    height: 1,
+                    rgba8: vec![255; usize::from(atlas_side) * 4].into(),
+                },
+            ]);
+            let (_, locations) = ActorArtworkPages::default().with_equipment_rasters(&atlas.layers);
+            runtime.placements = atlas.placements;
+            runtime.atlas_locations = locations;
+            let placement = runtime.placements[0].as_mut().unwrap();
+            placement.x = 64;
+            placement.y = 128;
+            let rect = placement.uv_rect();
+            let HeldKind::Block(visual) = item.kind else {
+                unreachable!()
+            };
+            let reference = render_model::textured_cube_vertices(
+                render_model::equipment::blocks::face_rects([0.0, 0.0, 1.0, 1.0]),
+            );
+            if authored {
+                runtime.block_models.insert(visual, reference.clone());
+            }
+            runtime.held_mesh(&item, true).unwrap();
+            let geometry = runtime.take_pending_geometries().pop().unwrap();
+            for ((face, reference), face_rect) in geometry
+                .vertices
+                .as_chunks::<6>()
+                .0
+                .iter()
+                .zip(reference.as_chunks::<6>().0)
+                .zip(render_model::equipment::blocks::face_rects(rect))
+            {
+                for (vertex, reference) in face.iter().zip(reference) {
+                    assert_eq!(vertex.glint_origin, [face_rect[0], face_rect[1]]);
+                    for axis in 0..2 {
+                        let normalized = (vertex.uv[axis] - vertex.glint_origin[axis])
+                            / (face_rect[axis + 2] - face_rect[axis]);
+                        let expected = (reference.uv[axis] - reference.glint_origin[axis])
+                            * f32::from(assets::BLOCK_ITEM_SHEET_GRID[axis]);
+                        assert!(
+                            (normalized - expected).abs() < 1.0e-5,
+                            "atlas {atlas_side}, authored {authored}: {normalized} != {expected}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
 
 #[test]
 fn unchanged_authored_pose_sampling_allocates_nothing_and_keeps_matrix_identity() {
@@ -534,7 +599,7 @@ fn review_render_pack_replacement_reclaims_mesh_slots_without_reusing_vanilla_id
     let retired = item_mesh_rig_id(MAX_ITEM_MESHES as u32 - 1);
     let placement = runtime.placements[0].unwrap();
     for _ in 0..8 {
-        runtime.attachable_meshes.insert((true, 0, 0), retired);
+        runtime.attachable_meshes.insert((true, 0, (1, 0)), retired);
         runtime.set_pack_layer(None);
         assert_eq!(
             runtime.build_mesh(MeshKey::Block(7), 0, placement),

@@ -12,9 +12,10 @@ use assets::carriers::startup::{
 };
 use assets::{
     RuntimeActorCatalog, RuntimeAudioCatalog, RuntimeAudioPcm, RuntimeBlockEntityAssets,
-    RuntimeEquipmentCatalog, RuntimeParticleAssets, RuntimeUiAssets,
+    RuntimeEquipmentCatalog, RuntimeParticleAssets,
 };
 use client_interaction::movement::PhysicsCollisionRegistries;
+use client_ui::ui_runtime::json_ui_assets::LoadedUiAssets;
 use client_ui::ui_runtime::presentation::PreparedJsonUi;
 use launcher_host::session_cleanup::ScopedSessionDirectory;
 use sha2::Digest;
@@ -40,10 +41,11 @@ pub(super) struct StartupCarriers {
 pub(super) struct PreparingJsonUi(std::thread::JoinHandle<Result<PreparedJsonUi, String>>);
 
 impl PreparingJsonUi {
-    fn start(assets: Arc<RuntimeUiAssets>) -> Result<Self> {
+    /// Parses the validated carrier on a worker, reusing its decoded item glint.
+    fn start(assets: LoadedUiAssets) -> Result<Self> {
         std::thread::Builder::new()
             .name("json-ui-catalog".to_owned())
-            .spawn(move || PreparedJsonUi::new(assets))
+            .spawn(move || PreparedJsonUi::from_loaded(assets))
             .map(Self)
             .context("start the JSON-UI catalog thread")
     }
@@ -164,6 +166,9 @@ fn load_core(
         });
         (actor, join(equipment))
     });
+    if let Some(catalog) = &equipment {
+        pack_runtime::entity_pack::set_base_equipment_catalog(Arc::clone(catalog));
+    }
     Ok(CoreCarriers {
         assets,
         actor,

@@ -26,8 +26,9 @@ use crate::{
 };
 
 // World visuals retain solid/liquid material dispositions, and replicated flipbook tiles hold
-// their native upper-left crop; reject earlier carriers.
-pub const BLOB_VERSION: u32 = 17;
+// their native upper-left crop. Model texture arrays require explicit state selectors;
+// reject earlier carriers that omit those selectors.
+pub const BLOB_VERSION: u32 = 18;
 pub const BLOB_MAGIC: [u8; 8] = {
     let mut magic = *b"MCBEAS00";
     magic[6] += (BLOB_VERSION / 10) as u8;
@@ -710,18 +711,19 @@ fn compiled_connected_bases(
             bases.push((index, flag));
             index += crate::BUBBLE_COLUMN_TEMPLATE_COUNT as usize;
         } else if flag == MODEL_TEMPLATE_FLAG_FIRE {
-            let Some(group) = templates.get(index..index + crate::FIRE_TEMPLATE_COUNT as usize)
+            let Some(group) =
+                templates.get(index..index + crate::fire::FIRE_TEMPLATE_COUNT as usize)
             else {
                 return Err(invalid("fire template group is truncated"));
             };
             if group.iter().enumerate().any(|(offset, template)| {
                 template.flags != flag
-                    || template.quad_count != crate::fire_template_quad_count(offset as u32)
+                    || template.quad_count != crate::fire::fire_template_quad_count(offset as u32)
             }) {
                 return Err(invalid("fire template group is noncanonical"));
             }
             bases.push((index, flag));
-            index += crate::FIRE_TEMPLATE_COUNT as usize;
+            index += crate::fire::FIRE_TEMPLATE_COUNT as usize;
         } else {
             index += 1;
         }

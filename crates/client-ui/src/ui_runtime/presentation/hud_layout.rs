@@ -1,6 +1,6 @@
 //! Java-reference gameplay HUD layout.
 //!
-//! Geometry, ordering, and visibility follow the approved clean-room Java
+//! Geometry, ordering, and visibility follow the approved Java
 //! Edition 26.2 default-resource presentation, expressed in GUI pixels and
 //! scaled by the Java GUI-scale rule. Every value is observable behavior
 //! (positions, sizes, timings) recorded from a legally obtained client;
@@ -65,6 +65,7 @@ pub struct HudFrame {
     pub window_text: WindowText,
     pub cursor_icon: Option<IconRef>,
     pub armor_icons: [Option<IconRef>; 4],
+    pub armor_durability: [Option<f32>; 4],
     pub offhand_icon: Option<IconRef>,
     /// Geometry-rendered offhand carrier; the original icon remains reserved
     /// for the compact hotbar slot.

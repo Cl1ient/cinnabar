@@ -204,10 +204,11 @@ pub(crate) fn advance_actor_frame(
                 client_presentation::actor_sampling::sample_actor_world_state(stream, collisions);
             }
         },
-        |stream, partial_tick| {
+        |stream, _partial_tick| {
             let consume = ui.as_deref().and_then(|_| {
                 client_interaction::item_use::selection::consume_ticks(&player, stream)
             });
+            // The use is timed in local physics ticks, so its frame fraction is that clock's too.
             let animation = ui
                 .as_deref()
                 .zip(item_use.as_deref())
@@ -219,7 +220,7 @@ pub(crate) fn advance_actor_frame(
                         movement
                             .as_deref()
                             .map_or(0, |movement| movement.completed_tick()),
-                        partial_tick,
+                        physics.tick_alpha(),
                     )
                 });
             (consume, animation)
@@ -262,6 +263,10 @@ pub(crate) fn prepare_actor_render_frame(
         .as_deref()
         .and_then(|player| crate::melee::selected_attack_timing(player, &world))
         .and_then(|timing| timing.swing_duration_ticks);
+    let server_swings = world
+        .stream
+        .as_mut()
+        .map_or(0, |stream| stream.take_local_server_swings());
     let stream = world.stream.as_ref();
     let swing_progress = stream.and_then(|_| {
         let movement = movement.as_deref()?;
@@ -271,6 +276,16 @@ pub(crate) fn prepare_actor_render_frame(
                 movement.interaction_authority_identity(),
                 movement.completed_tick(),
                 effects,
+                item_swing_ticks,
+            );
+        }
+        // Admission for the next tick uses each animation's own effect-aware restart guard.
+        if server_swings > 0 {
+            swings.try_swing_before_tick_for_item(
+                movement.completed_tick().saturating_add(1),
+                effects
+                    .as_deref()
+                    .map_or_default(|effects| effects.mining_effects()),
                 item_swing_ticks,
             );
         }

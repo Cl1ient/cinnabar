@@ -1,6 +1,6 @@
 //! Compiled JSON-UI asset carrier: the packed `textures/ui` atlas, each
 //! texture's page placement, the nine-slice texture sidecars, and the raw
-//! `ui/*.json` catalog the clean-room resolver consumes at runtime.
+//! `ui/*.json` catalog the UI resolver consumes at runtime.
 //!
 //! The raw ui-json bytes are kept verbatim (not pre-resolved) because a joined
 //! server pack overrides ui json at runtime, so resolution happens then, not
@@ -17,7 +17,8 @@ use sha2::{Digest, Sha256};
 use crate::AssetError;
 
 pub const UI_CARRIER_MAGIC: [u8; 8] = *b"MCBEUI01";
-pub const UI_CARRIER_VERSION: u32 = 1;
+pub const UI_CARRIER_VERSION: u32 = 2;
+pub const SPLASH_RESOURCE_PATH: &str = "splashes.json";
 pub const MAX_UI_ATLAS_PAGES: usize = 16;
 /// Bound on an atlas page's width and height in pixels.
 pub const MAX_UI_ATLAS_SIDE: u32 = 4096;
@@ -858,7 +859,7 @@ mod tests {
 
         let mut versioned =
             encode_ui_catalog(manifest, &pages, &textures, &sidecars, &files).unwrap();
-        versioned[8] = 0x02; // unsupported version
+        versioned[8..12].copy_from_slice(&(UI_CARRIER_VERSION + 1).to_le_bytes());
         assert!(RuntimeUiAssets::decode(&versioned).is_err());
     }
 }

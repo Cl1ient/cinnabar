@@ -1,4 +1,3 @@
-//! Bounded Bedrock resource-pack source readers.
 mod actor;
 mod atmosphere;
 mod audio;
@@ -25,7 +24,7 @@ mod environment_settings;
 pub mod equipment;
 mod error;
 mod family_routing;
-mod fire;
+pub mod fire;
 mod fog_layers;
 mod fog_transition;
 mod font;
@@ -60,7 +59,7 @@ pub mod sound_bank;
 mod sound_events;
 mod stair;
 pub mod starter_skins;
-mod texture;
+pub mod texture;
 mod ui;
 pub mod vanilla_pack;
 mod vanilla_refs;
@@ -180,8 +179,6 @@ pub use equipment::{
     encode_equipment_catalog_with_textures, encode_equipment_catalog_with_use_profiles,
 };
 pub use error::AssetError;
-pub use fire::{FIRE_ATTACHMENT_MASK_COUNT, FIRE_SUPPORTED_QUAD_COUNT, FIRE_TEMPLATE_COUNT};
-pub use fire::{fire_attachment_template_offset, fire_template_quad_count};
 pub use fog_layers::resolve_fog_layers;
 pub use fog_transition::FogTransition;
 pub use font::{
@@ -235,7 +232,7 @@ pub use model::{
     MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE, MODEL_TEMPLATE_FLAG_GATE_AXIS_X,
     MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP, MODEL_TEMPLATE_FLAG_LILY_PAD,
     MODEL_TEMPLATE_FLAG_NETHER_PORTAL, MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_POTTED_PLANT,
-    MODEL_TEMPLATE_FLAG_SNOW_LAYER, MODEL_TEMPLATE_FLAG_STAIR,
+    MODEL_TEMPLATE_FLAG_SNOW_LAYER, MODEL_TEMPLATE_FLAG_STAIR, MODEL_TEMPLATE_FLAG_TORCH,
     MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE, MODEL_TEMPLATE_FLAG_WALL, ModelQuad, ModelTemplate,
     NETHER_PORTAL_IDENTIFIER, NO_ANIMATION, NO_MODEL_TEMPLATE, SEASONAL_LEAF_DEEP_OFFSET,
     SEASONAL_LEAF_EXPOSED_OFFSET, SEASONAL_LEAF_MATERIAL_COUNT, SNOWED_GRASS_SIDE_TEXTURE,
@@ -293,8 +290,8 @@ pub use texture::{
 };
 pub use ui::{
     MAX_UI_ATLAS_PAGES, MAX_UI_ATLAS_SIDE, MAX_UI_CARRIER_BYTES, MAX_UI_FILE_BYTES, MAX_UI_FILES,
-    MAX_UI_KEY_BYTES, MAX_UI_SIDECARS, MAX_UI_TEXTURES, RuntimeUiAssets, UI_CARRIER_MAGIC,
-    UI_CARRIER_VERSION, UI_CREDITS_FILES, UiAtlasPage, UiFile, UiNineSlice, UiSidecar,
-    UiSidecarEntry, UiTexturePlacement, UiTextureUv, encode_ui_catalog,
+    MAX_UI_KEY_BYTES, MAX_UI_SIDECARS, MAX_UI_TEXTURES, RuntimeUiAssets, SPLASH_RESOURCE_PATH,
+    UI_CARRIER_MAGIC, UI_CARRIER_VERSION, UI_CREDITS_FILES, UiAtlasPage, UiFile, UiNineSlice,
+    UiSidecar, UiSidecarEntry, UiTexturePlacement, UiTextureUv, encode_ui_catalog,
 };
 pub use vanilla_refs::{MAX_VANILLA_REFS_BYTES, VanillaEntityRefs, VanillaGeometryFile};

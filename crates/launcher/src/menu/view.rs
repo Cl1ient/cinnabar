@@ -29,6 +29,8 @@ pub struct LocalWorldCard {
     pub world_type: String,
     pub date: String,
     pub size: String,
+    /// Its last captured view, once one was taken.
+    pub thumbnail: Option<crate::local_worlds::world::WorldThumbnail>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]

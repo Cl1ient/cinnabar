@@ -19,6 +19,7 @@ pub(super) fn collect_family(
     collect_directory(root, &absolute_root, allowed_extensions, output, 0, true)
 }
 
+/// Collects an optional source tree in stable order, rejecting symlinks and unsafe entries.
 pub(crate) fn collect_optional_family(
     root: &Path,
     relative_root: &str,

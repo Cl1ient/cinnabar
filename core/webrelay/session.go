@@ -53,7 +53,7 @@ type webSession struct {
 	signInSeq    uint64         // numbers sign-ins; only the latest, while cancelSignIn is set, may publish
 	signIns      sync.WaitGroup // running sign-in workers
 	handler      *proxy.SessionHandler
-	playing      bool
+	play         *sessionPlay
 	attached     int       // open control and play connections
 	idleSince    time.Time // when attached last fell to zero
 	closed       bool
@@ -131,7 +131,7 @@ func (session *webSession) SignIn() error {
 	if session.closed {
 		return net.ErrClosed
 	}
-	if session.playing {
+	if session.play != nil {
 		return errSessionBusy
 	}
 	if session.cancelSignIn != nil || session.auth.State == control.AuthSignedIn {
@@ -198,7 +198,7 @@ func (session *webSession) runSignIn(ctx context.Context, cancel context.CancelF
 	if current {
 		session.cancelSignIn = nil
 	}
-	if !current || session.playing {
+	if !current || session.play != nil {
 		if err == nil {
 			_ = handler.Close()
 			_ = account.Close()
@@ -224,7 +224,7 @@ func (session *webSession) SignOut() error {
 	if session.closed {
 		return net.ErrClosed
 	}
-	if session.playing {
+	if session.play != nil {
 		return errSessionBusy
 	}
 	if session.cancelSignIn != nil {
@@ -253,27 +253,6 @@ func (session *webSession) dropAccountLocked() {
 		session.closeAccount()
 		session.account, session.closeAccount = nil, nil
 	}
-}
-
-// beginPlay claims the session's only play connection and returns the handler it joins through.
-func (session *webSession) beginPlay() (*proxy.SessionHandler, error) {
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	if session.closed {
-		return nil, net.ErrClosed
-	}
-	if session.playing || session.cancelSignIn != nil {
-		return nil, errSessionBusy
-	}
-	session.playing = true
-	return session.handler, nil
-}
-
-// endPlay releases the sole play connection after its handler returns.
-func (session *webSession) endPlay() {
-	session.mu.Lock()
-	session.playing = false
-	session.mu.Unlock()
 }
 
 // attach counts a connection; the returned detach starts the idle clock when the last one closes.

@@ -44,7 +44,8 @@ relay retains one previous bearer at its original expiry so a lost replacement
 does not prevent resumption. A resume retains the bearer presented by the browser.
 Resumption can retain an account across network changes; the new peer address must
 still satisfy admission. It starts a fresh play generation. Closing control cancels
-play. A refused resume requires an explicit fresh session; gameplay is never
+play; resumed play waits for the cancelled handler to finish before restarting.
+A refused resume requires an explicit fresh session; gameplay is never
 replayed. Sign-out erases the account after play has ended.
 
 Admission is limited to 256 retained accounts and 256 transport connections, with

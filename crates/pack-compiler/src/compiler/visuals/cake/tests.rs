@@ -8,7 +8,8 @@ fn cake_inner_material_keeps_the_second_west_face_variant() {
     std::fs::write(
         root.path().join("blocks.json"),
         json!({"cake":{"textures":{
-            "side":"cake_side", "west":"cake_west", "up":"cake_top", "down":"cake_bottom"
+            "west":"cake_west", "east":"cake_side", "north":"cake_side",
+            "south":"cake_side", "up":"cake_top", "down":"cake_bottom"
         }}})
         .to_string(),
     )

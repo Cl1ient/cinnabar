@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     io,
     path::PathBuf,
     sync::{Arc, Mutex, MutexGuard, PoisonError},
@@ -7,7 +8,7 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
-use launcher::local_worlds::world::PrefsUpdate;
+use launcher::local_worlds::world::{PrefsUpdate, WorldThumbnail};
 use launcher_host::local_worlds::{CoreLink, CoreRoute, Manager, WorldError};
 
 use super::model::{Effect, Event};
@@ -15,11 +16,54 @@ use super::model::{Effect, Event};
 /// Spaces preference polls, and bounds a status poll that no world change answers sooner.
 const POLL_DELAY: Duration = Duration::from_millis(250);
 
+/// Work kept on the local-world worker, including thumbnail persistence.
+enum Request {
+    Effect(Effect),
+    SaveThumbnail { id: String, image: Arc<[u8]> },
+}
+
+/// A menu answer and newly loaded thumbnails, read together by the world worker.
+pub(super) struct Reply {
+    pub(super) event: Event,
+    pub(super) thumbnails: Vec<(String, WorldThumbnail)>,
+}
+
+/// Reads uncached thumbnails on the worker and forgets deleted worlds.
+fn read_thumbnails(
+    manager: &Manager,
+    event: &Event,
+    loaded: &mut HashSet<String>,
+) -> Vec<(String, WorldThumbnail)> {
+    let worlds = match event {
+        Event::Listed(worlds) => worlds.as_slice(),
+        Event::Created(world) | Event::Updated(world) => std::slice::from_ref(world),
+        Event::Deleted(id) => {
+            loaded.remove(id);
+            return Vec::new();
+        }
+        _ => return Vec::new(),
+    };
+    worlds
+        .iter()
+        .filter_map(|world| {
+            if loaded.contains(&world.id) {
+                return None;
+            }
+            let image = manager.thumbnail(&world.id)?;
+            loaded.insert(world.id.clone());
+            Some((
+                world.id.clone(),
+                WorldThumbnail::new(&world.id, Arc::from(image)),
+            ))
+        })
+        .collect()
+}
+
 /// Runs [`Effect`]s against the world manager on a worker thread, in order, and keeps the
 /// attached core's route to the open world current.
 pub struct WorldsClient {
-    effects: Sender<Effect>,
-    events: Receiver<Event>,
+    effects: Sender<Request>,
+    events: Receiver<Reply>,
     /// Set once the client is detached; an open in progress finishes before it is set.
     revoked: Arc<Mutex<bool>>,
     _core: CoreLink,
@@ -41,12 +85,22 @@ impl WorldsClient {
         let (changes, routed) = (manager.subscribe(), route.changes());
         let revoked = Arc::new(Mutex::new(false));
         let worker_revoked = Arc::clone(&revoked);
-        let (effects, effect_rx) = unbounded::<Effect>();
-        let (event_tx, events) = unbounded::<Event>();
+        let (effects, effect_rx) = unbounded::<Request>();
+        let (event_tx, events) = unbounded::<Reply>();
         thread::Builder::new()
             .name("local-worlds".to_owned())
             .spawn(move || {
-                while let Ok(effect) = effect_rx.recv() {
+                let mut loaded = HashSet::new();
+                while let Ok(request) = effect_rx.recv() {
+                    let effect = match request {
+                        Request::Effect(effect) => effect,
+                        Request::SaveThumbnail { id, image } => {
+                            if let Err(error) = manager.save_thumbnail(&id, &image) {
+                                bevy::log::warn!(%error, "could not save the world thumbnail");
+                            }
+                            continue;
+                        }
+                    };
                     match effect {
                         // A world change or the core routing it answers at once.
                         Effect::PollStatus => crossbeam_channel::select! {
@@ -74,10 +128,11 @@ impl WorldsClient {
                         Event::Failed(message) if preferences => Event::FailedPrefs(message),
                         event => event,
                     });
-                    if let Some(event) = event
-                        && event_tx.send(event).is_err()
-                    {
-                        break;
+                    if let Some(event) = event {
+                        let thumbnails = read_thumbnails(&manager, &event, &mut loaded);
+                        if event_tx.send(Reply { event, thumbnails }).is_err() {
+                            break;
+                        }
                     }
                 }
             })?;
@@ -96,10 +151,15 @@ impl WorldsClient {
     }
 
     pub fn send(&self, effect: Effect) {
-        let _ = self.effects.send(effect);
+        let _ = self.effects.send(Request::Effect(effect));
     }
 
-    pub fn drain(&self) -> Vec<Event> {
+    /// Queues a write without opening files or acquiring the world store's lock.
+    pub(super) fn save_thumbnail(&self, id: String, image: Arc<[u8]>) {
+        let _ = self.effects.send(Request::SaveThumbnail { id, image });
+    }
+
+    pub(super) fn drain(&self) -> Vec<Reply> {
         self.events.try_iter().collect()
     }
 }
@@ -235,7 +295,7 @@ mod tests {
             events.extend(client.drain());
             !events.is_empty()
         });
-        assert!(matches!(&events[0], Event::Status(_)));
+        assert!(matches!(&events[0].event, Event::Status(_)));
     }
 
     #[test]
@@ -251,6 +311,9 @@ mod tests {
             events.extend(client.drain());
             !events.is_empty()
         });
-        assert!(matches!(&events[0], Event::Listed(worlds) if worlds.is_empty()));
+        assert!(matches!(&events[0].event, Event::Listed(worlds) if worlds.is_empty()));
     }
 }
+
+#[cfg(test)]
+mod thumbnail_tests;

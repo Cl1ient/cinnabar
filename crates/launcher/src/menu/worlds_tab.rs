@@ -70,6 +70,7 @@ pub fn world_card(world: &World) -> LocalWorldCard {
         world_type: world_type_label(world.generator).to_owned(),
         date: civil_date(world.last_played_unix.max(world.created_unix)),
         size: file_size(world.size_bytes),
+        thumbnail: None,
     }
 }
 

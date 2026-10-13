@@ -4620,7 +4620,8 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       acceptance, strict Clippy/formatting, and independent re-review are green.
     - [x] Door and trapdoor templates: all 672 door states and 336 trapdoor
       states compile through compact six-quad alpha-cutout cuboids with exact
-      typed open/orientation/hinge/half selection, 3/16-block thickness,
+      typed open/orientation/hinge/half selection, native door thickness and
+      3/16-block trapdoor thickness,
       lower/upper door materials, conservative partial-model culling, and
       deterministic template reuse. Trapdoor templates also retain facing/top-half
       artwork orientation and the top three sprite rows on thin edges, including
@@ -4635,6 +4636,14 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       strict Clippy/formatting, full 16,913-state ratchet, and independent review
       green). Deterministic gallery/native GPU evidence remains in the shared
       residual-family live gate.
+    - [ ] Paired door rendering acceptance: world meshing resolves lower
+      direction/open and upper hinge within the same door class, including
+      vertical subchunk neighbors; missing pairs emit no door geometry.
+      Highlights and mining cracks use the same paired model surfaces; crack
+      caches retain the resolved pose so neighbor updates change their geometry.
+      Focused regressions cover different stored selectors. Source-bound
+      before/after frames, native-server toggle/picking input, directional
+      server artwork and final independent review remain incomplete.
     - [ ] Barrel and adjacent trapdoor render parity: barrel facing/open artwork,
       grain direction, material ownership and carried-item rendering have regression
       and rendered coverage. The reported texture leakage was not reproduced;

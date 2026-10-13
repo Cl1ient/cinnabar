@@ -4,17 +4,18 @@ use super::*;
 use crate::presentation::equipment::remote_input;
 use crate::presentation::{actors::ActorPresentationBatch, equipment::ActorEquipmentInput};
 
-/// Adds held and worn layers before cape artwork can replace a worn wing texture.
+/// Adds held and worn layers using the local actor identity and inventory facts.
+/// Cape artwork is applied afterward and may replace a worn wing texture.
 pub(super) fn attach(
     batch: &mut ActorPresentationBatch,
     equipment: &mut EquipmentRuntime,
     stream: &WorldStream,
-    local_runtime_id: u64,
-    input: &ActorEquipmentInput,
+    local: (u64, &ActorEquipmentInput),
     java_posed: &[java::Posed],
     combat_visuals: render_api::CombatVisuals,
     frame: (f32, f32, Option<&render_scene::UiGlintSettings>),
 ) {
+    let (local_runtime_id, input) = local;
     let (partial_tick, delta_seconds, glint_settings) = frame;
     crate::presentation::actors::attach_layers(batch, equipment, |equipment, body| {
         let runtime_id = body.input.identity.runtime_id;

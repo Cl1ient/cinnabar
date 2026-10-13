@@ -17,15 +17,23 @@ import (
 
 func TestAcquisitionBudgetChargesRepeatedOffersOnce(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		repeats int
-		size    uint64
+		name      string
+		repeats   int
+		offerSize uint64
 	}{
-		{name: "count", repeats: maxSelectedResourcePacks, size: 1},
-		{name: "bytes", repeats: 2, size: maxResourcePackArchiveBytes},
+		{name: "count", repeats: maxSelectedResourcePacks},
+		{name: "bytes", repeats: 2, offerSize: maxResourcePackArchiveBytes},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			info := packInfos(test.size, test.size)
+			info := packInfos(0, 0)
+			packs := make([]*resource.Pack, len(info.TexturePacks))
+			for index := range info.TexturePacks {
+				packs[index] = admissionPackWithUUID(t, info.TexturePacks[index].UUID.String())
+				info.TexturePacks[index].Size = uint64(packs[index].Size())
+				if test.offerSize != 0 {
+					info.TexturePacks[index].Size = test.offerSize
+				}
+			}
 			first, second := info.TexturePacks[0], info.TexturePacks[1]
 			info.TexturePacks = slices.Repeat([]protocol.TexturePackInfo{first}, test.repeats)
 			info.TexturePacks = append(info.TexturePacks, second)
@@ -36,10 +44,9 @@ func TestAcquisitionBudgetChargesRepeatedOffersOnce(t *testing.T) {
 				t.Fatalf("admitted = %v, want %v", got, want)
 			}
 			// A corrected transfer must still fit beside the other unique pack.
-			budget.event(started(minecraft.ResourcePackSourceChunks, first.UUID, test.size))
-			budget.event(started(minecraft.ResourcePackSourceChunks, second.UUID, test.size))
-			for _, entry := range []protocol.TexturePackInfo{first, second} {
-				if budget.excludes(admissionPackWithUUID(t, entry.UUID.String())) {
+			for _, pack := range packs {
+				budget.event(started(minecraft.ResourcePackSourceChunks, pack.UUID(), uint64(pack.Size())))
+				if budget.excludes(pack) {
 					t.Fatal("repeated offers excluded a bounded unique archive")
 				}
 			}
@@ -90,8 +97,12 @@ func TestRequiredRepeatedURLOfferRetainsLaterChunkPack(t *testing.T) {
 		t.Fatal("fixture did not negotiate a stack")
 	}
 	packs := append(slices.Repeat([]*resource.Pack{first}, maxSelectedResourcePacks), second)
+	offer, ok := negotiatedAdmissionPacks(t, packs, true).ResourcePackOffer()
+	if !ok {
+		t.Fatal("fixture did not negotiate an offer")
+	}
 	listener, network := newAdmissionTestListener(t, func(_ context.Context, conn *minecraft.Conn) error {
-		if err := conn.ConfigureResourcePackOffer(packs, true); err != nil {
+		if err := conn.ConfigureResourcePackOfferSnapshot(offer, true); err != nil {
 			return err
 		}
 		return conn.ConfigureResourcePackStack(selection, true)
@@ -118,6 +129,16 @@ func TestRequiredRepeatedURLOfferRetainsLaterChunkPack(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+	receivedOffer, ok := conn.ResourcePackOffer()
+	if !ok || !receivedOffer.TexturePackRequired() || len(receivedOffer.TexturePacks()) != len(packs) {
+		t.Fatal("client did not receive the full required offer with repeated entries")
+	}
+	for index, entry := range receivedOffer.TexturePacks() {
+		info, pack := entry.Info(), packs[index]
+		if info.UUID != pack.UUID() || info.Version != pack.Version() || info.Size != uint64(pack.Size()) || info.DownloadURL != pack.DownloadURL() {
+			t.Fatalf("received offer entry %d lost its identity, size, source or order", index)
+		}
 	}
 	stack, err := captureSelectedResourcePackStack(conn, budget.excludes)
 	if err != nil {

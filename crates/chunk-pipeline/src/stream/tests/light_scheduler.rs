@@ -262,6 +262,7 @@ mod mesh_admission;
 mod backlog;
 mod mixed_prefix;
 mod mutation_summary;
+mod noop_gates;
 mod pending_coalescing;
 mod resident_air;
 mod startup_lanes;

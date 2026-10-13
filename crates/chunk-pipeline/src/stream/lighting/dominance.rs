@@ -167,6 +167,53 @@ impl WorldStream {
         })
     }
 
+    /// Whether retiring `removed` can change `survivor`'s current light. It cannot when every
+    /// cell on their shared face already holds more light, in each channel, than `removed` could
+    /// seed into it: seeds below their entry cells' values support no value anywhere.
+    pub(in crate::stream) fn removal_can_change_light(
+        &self,
+        removed: SubChunkKey,
+        survivor: SubChunkKey,
+    ) -> bool {
+        if self.lighting.jobs.pending.contains_key(&survivor)
+            || self.lighting.jobs.in_flight.contains_key(&survivor)
+            || !self.light_is_current(survivor)
+        {
+            return true;
+        }
+        let Some(face) = LIGHT_NEIGHBOUR_OFFSETS
+            .into_iter()
+            .position(|offset| offset_sub_chunk_key(removed, offset) == Some(survivor))
+        else {
+            return true;
+        };
+        // A section with no stored light never seeded a neighbour.
+        let Some(source) = self.lighting.store.light(removed) else {
+            return false;
+        };
+        let Some(destination) = self.lighting.store.light(survivor) else {
+            return true;
+        };
+        let mut destination_sub_chunk = None;
+        !face_cells(face).all(|(source_position, destination_position)| {
+            let get = |light: &SubChunkLight, channel, position: [u8; 3]| {
+                light
+                    .get(channel, position[0], position[1], position[2])
+                    .expect("face coordinates are in range")
+            };
+            let cell = [LightChannel::Block, LightChannel::Sky].map(|channel| {
+                (
+                    get(source, channel, source_position),
+                    get(destination, channel, destination_position),
+                )
+            });
+            removed_seed_is_dominated(cell, 0)
+                || self
+                    .destination_filter(survivor, destination_position, &mut destination_sub_chunk)
+                    .is_some_and(|filter| removed_seed_is_dominated(cell, filter))
+        })
+    }
+
     fn destination_filter(
         &self,
         key: SubChunkKey,
@@ -194,6 +241,16 @@ impl WorldStream {
             LightBlockSample::Unknown => None,
         }
     }
+}
+
+/// Whether a seed from a removed neighbour into a cell with `filter` supports nothing there: each
+/// channel's `(source, destination)` seed is zero or strictly below the cell's light. Horizontal
+/// faces carry no direct sky.
+fn removed_seed_is_dominated(channels: [(u8, u8); 2], filter: u8) -> bool {
+    channels.into_iter().all(|(source, destination)| {
+        let seed = source.saturating_sub(filter.max(1));
+        seed == 0 || seed < destination
+    })
 }
 
 fn incoming_is_dominated(

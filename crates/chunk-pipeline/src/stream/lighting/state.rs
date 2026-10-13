@@ -212,6 +212,12 @@ impl WorldStream {
         cells: Option<&[BlockPos]>,
     ) {
         let sources = sources.into_iter().collect::<BTreeSet<_>>();
+        // A never-solved source is an untrusted boundary: no neighbour's light read it.
+        let unsolved = sources
+            .iter()
+            .copied()
+            .filter(|key| !self.lighting.ownership.contains_key(key))
+            .collect::<BTreeSet<_>>();
         let mut seeded = cells
             .filter(|_| sources.len() == 1)
             .and_then(|cells| {
@@ -270,12 +276,14 @@ impl WorldStream {
             .iter()
             .copied()
             .flat_map(|source| {
+                let unsolved = unsolved.contains(&source);
                 source.mesh_dependents().filter(move |dependent| {
-                    reach.light_reaches([
-                        i64::from(dependent.x) - i64::from(source.x),
-                        i64::from(dependent.y) - i64::from(source.y),
-                        i64::from(dependent.z) - i64::from(source.z),
-                    ])
+                    (*dependent == source || !unsolved)
+                        && reach.light_reaches([
+                            i64::from(dependent.x) - i64::from(source.x),
+                            i64::from(dependent.y) - i64::from(source.y),
+                            i64::from(dependent.z) - i64::from(source.z),
+                        ])
                 })
             })
             .filter(|key| self.resident.contains(key))

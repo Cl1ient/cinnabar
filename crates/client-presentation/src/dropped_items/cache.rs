@@ -201,19 +201,49 @@ impl ModelCache {
         cost: impl FnOnce() -> Option<usize>,
         build: impl FnOnce() -> Option<DroppedItemModel>,
     ) -> Option<u32> {
+        self.admit(key, cost, build, true)
+    }
+
+    /// Retains an animation frame, building its one-layer icon only in unused capacity.
+    pub(super) fn warm_icon(
+        &mut self,
+        key: ModelKey,
+        build: impl FnOnce() -> Option<DroppedItemModel>,
+    ) -> Option<u32> {
+        self.admit(key, || Some(1), build, false)
+    }
+
+    /// Admits a model within both budgets, optionally reclaiming absent consumers.
+    fn admit(
+        &mut self,
+        key: ModelKey,
+        cost: impl FnOnce() -> Option<usize>,
+        build: impl FnOnce() -> Option<DroppedItemModel>,
+        reclaim: bool,
+    ) -> Option<u32> {
         self.request(&key);
         if let Some(&slot) = self.index.get(&key) {
             return Some(slot as u32);
         }
+        let available = if reclaim {
+            self.available
+        } else {
+            MAX_ITEM_LAYERS - 1 - self.layers
+        };
+        let available_pixels = if reclaim {
+            self.available_pixels
+        } else {
+            assets::texture::policy::MAX_SUBSCRIBER_BYTES - self.pixel_bytes
+        };
         // Repeated rejections reuse the capacity summary without scans or model construction.
-        if self.available == 0 {
+        if available == 0 {
             return None;
         }
         let estimate = match self.rejected.get(&key) {
             Some(entry) => {
                 if entry
                     .pixel_bytes
-                    .is_some_and(|bytes| bytes > self.available_pixels)
+                    .is_some_and(|bytes| bytes > available_pixels)
                 {
                     return None;
                 }
@@ -233,7 +263,7 @@ impl ModelCache {
         if cost == 0 {
             return None;
         }
-        if cost > self.available {
+        if cost > available {
             let pixel_bytes = self.rejected.get(&key).and_then(|entry| entry.pixel_bytes);
             self.remember_rejection(key, Some(cost), pixel_bytes);
             return None;
@@ -250,7 +280,7 @@ impl ModelCache {
             "model layer estimate must match its geometry"
         );
         let pixel_bytes = pixel_cost(&model);
-        if pixel_bytes > self.available_pixels {
+        if pixel_bytes > available_pixels {
             self.remember_rejection(key, Some(cost), Some(pixel_bytes));
             return None;
         }

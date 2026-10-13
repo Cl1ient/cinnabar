@@ -24,6 +24,7 @@ use {
 
 use client_ui::ui_runtime::presentation::UiPresentationRuntime;
 
+mod dials;
 mod lighting;
 
 // Provisional world sizes and colours; each needs independent measurement.
@@ -268,6 +269,7 @@ impl DroppedItemPublisher<'_, '_> {
         )
     }
 
+    /// Resolves a sprite model, reusing its image and placement identity.
     fn icon_model(
         cache: &mut ModelCache,
         icons: &UiPresentationRuntime,
@@ -279,26 +281,7 @@ impl DroppedItemPublisher<'_, '_> {
         cache.model(
             key,
             || Some(1),
-            || {
-                // Icons that are not ready yet are retried on the next frame.
-                let pixels = icons.item_sprite(
-                    identifier,
-                    metadata,
-                    assets::texture::policy::device_policy()
-                        .max_side()
-                        .min(MAX_ITEM_SPRITE_SIDE),
-                )?;
-                let sprite = DroppedItemSprite {
-                    width: pixels.width,
-                    height: pixels.height,
-                    rgba8: Arc::from(pixels.rgba8),
-                };
-                Some(if native_drop {
-                    DroppedItemModel::NativeSprite(sprite)
-                } else {
-                    DroppedItemModel::Sprite(sprite)
-                })
-            },
+            || icon_sprite(icons, identifier, metadata, native_drop),
         )
     }
 
@@ -367,6 +350,7 @@ impl DroppedItemPublisher<'_, '_> {
         let mut terrain_instances = Vec::new();
 
         let dropped = stream.authority().dropped_items(partial_tick);
+        let mut dial_models = dials::DialModels::default();
         cache.begin_frame();
         // Protect all current consumers before admitting new models, regardless of iteration order.
         for view in &dropped {
@@ -376,6 +360,7 @@ impl DroppedItemPublisher<'_, '_> {
                 cache.request(&ModelKey::Block { hashed, id });
             }
             if let Some(identifier) = view.item.identifier.as_ref() {
+                dial_models.observe(icons, identifier, view.item.identity.metadata);
                 let (identifier, metadata) = dropped_icon_key(icons, identifier, &view.item);
                 if let Some(icon) = icons.item_icon(identifier, metadata) {
                     cache.request(&ModelKey::icon(icon, true));
@@ -585,6 +570,7 @@ impl DroppedItemPublisher<'_, '_> {
                 );
             }
         }
+        dial_models.warm(cache, icons);
         cache.finish_frame();
         scene.publish(
             cache.revision,
@@ -595,6 +581,32 @@ impl DroppedItemPublisher<'_, '_> {
         );
         scene.publish_terrain_instances(stream.authority().actor_session_id(), &terrain_instances);
     }
+}
+
+/// Builds icon pixels lazily; unavailable sprites are retried on the next frame.
+fn icon_sprite(
+    icons: &UiPresentationRuntime,
+    identifier: &str,
+    metadata: u32,
+    native_drop: bool,
+) -> Option<DroppedItemModel> {
+    let pixels = icons.item_sprite(
+        identifier,
+        metadata,
+        assets::texture::policy::device_policy()
+            .max_side()
+            .min(MAX_ITEM_SPRITE_SIDE),
+    )?;
+    let sprite = DroppedItemSprite {
+        width: pixels.width,
+        height: pixels.height,
+        rgba8: Arc::from(pixels.rgba8),
+    };
+    Some(if native_drop {
+        DroppedItemModel::NativeSprite(sprite)
+    } else {
+        DroppedItemModel::Sprite(sprite)
+    })
 }
 
 /// The icon identity dropped `item` (with `identifier`) draws: a dial's current strip frame,

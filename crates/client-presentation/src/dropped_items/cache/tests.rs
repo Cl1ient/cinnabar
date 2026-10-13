@@ -676,3 +676,65 @@ fn byte_budget_rejections_skip_builds_until_capacity_changes() {
     assert_eq!(cache.index[&key(0)], first as usize);
     assert!(!cache.index.contains_key(&key(1)));
 }
+
+#[test]
+fn speculative_icon_frames_do_not_evict_models_at_the_layer_limit() {
+    let mut cache = ModelCache::default();
+    frame(&mut cache, []);
+    for id in 0..(MAX_ITEM_LAYERS - 1) as u32 {
+        admit(&mut cache, id).unwrap();
+    }
+    frame(&mut cache, [0]);
+    let icon = ModelKey::Icon {
+        page: 0,
+        uv: [0, 0, 1, 1],
+        native: true,
+    };
+    assert_eq!(cache.warm_icon(icon, || panic!("no free layers")), None);
+    assert_eq!(cache.index.len(), MAX_ITEM_LAYERS - 1);
+    assert_eq!(cache.index[&key(0)], 0);
+    assert!(
+        cache.index.contains_key(&key(1)),
+        "inactive models remain cached"
+    );
+    assert!(
+        admit(&mut cache, u32::MAX).is_some(),
+        "current items can still reclaim"
+    );
+    assert_eq!(cache.index[&key(0)], 0);
+}
+
+#[test]
+fn speculative_icon_frames_do_not_evict_models_at_the_pixel_limit() {
+    let pixels: Arc<[u8]> = vec![255; assets::texture::policy::MAX_IMAGE_BYTES].into();
+    let build = || {
+        Some(DroppedItemModel::Sprite(DroppedItemSprite {
+            width: 2048,
+            height: 2048,
+            rgba8: Arc::clone(&pixels),
+        }))
+    };
+    let mut cache = ModelCache::default();
+    frame(&mut cache, []);
+    let count = assets::texture::policy::MAX_SUBSCRIBER_BYTES / pixels.len();
+    for id in 0..count as u32 {
+        cache.model(key(id), || Some(1), build).unwrap();
+    }
+    frame(&mut cache, [0]);
+    let icon = ModelKey::Icon {
+        page: 0,
+        uv: [0, 0, 1, 1],
+        native: true,
+    };
+    assert_eq!(cache.warm_icon(icon, || Some(sprite())), None);
+    assert_eq!(cache.index.len(), count);
+    assert_eq!(
+        cache.pixel_bytes,
+        assets::texture::policy::MAX_SUBSCRIBER_BYTES
+    );
+    assert!(
+        admit(&mut cache, u32::MAX).is_some(),
+        "current items can still reclaim"
+    );
+    assert_eq!(cache.index[&key(0)], 0);
+}

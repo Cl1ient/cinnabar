@@ -24,6 +24,18 @@ impl UiPresentationRuntime {
         self.dial_frames
             .icon_key(identifier, self.icon_catalog.as_deref()?)
     }
+
+    /// Returns all carried frames of the currently animated dial, respecting session overrides.
+    #[must_use]
+    pub fn dial_icon_frames(
+        &self,
+        identifier: &str,
+        metadata: u32,
+    ) -> Option<(&'static str, std::ops::Range<u32>)> {
+        let (identifier, _) = self.dial_icon_key(identifier, metadata)?;
+        let count = self.icon_catalog.as_deref()?.frame_count(identifier);
+        Some((identifier, 0..count))
+    }
 }
 
 #[cfg(test)]
@@ -67,6 +79,7 @@ mod tests {
         observe(&mut presentation, Some(&overrides));
         for identifier in identifiers {
             assert_eq!(presentation.dial_icon_key(identifier, 0), None);
+            assert_eq!(presentation.dial_icon_frames(identifier, 0), None);
             assert_eq!(
                 icon(&presentation, identifier),
                 presentation.item_icon(identifier, 0)
@@ -75,6 +88,10 @@ mod tests {
         assert_ne!(icon(&presentation, "minecraft:compass"), original);
         observe(&mut presentation, None);
         assert_eq!(icon(&presentation, "minecraft:compass"), original);
+        assert_eq!(
+            presentation.dial_icon_frames("minecraft:compass", 0),
+            Some(("minecraft:compass_atlas", 0..inventory::COMPASS_FRAMES))
+        );
     }
 
     /// A presentation whose catalog has a static compass and clock and `frames` compass strip
@@ -140,6 +157,7 @@ mod tests {
         let mut presentation = presentation(inventory::COMPASS_FRAMES);
         let still = icon(&presentation, "minecraft:compass");
         assert_eq!(still, presentation.item_icon("minecraft:compass", 0));
+        assert_eq!(presentation.dial_icon_frames("minecraft:compass", 0), None);
         presentation.set_dial_frames(inventory::DialFrames {
             compass: Some(7),
             recovery_compass: None,
@@ -154,5 +172,6 @@ mod tests {
             presentation.item_icon("minecraft:clock", 0),
             "no clock frames are carried"
         );
+        assert_eq!(presentation.dial_icon_frames("minecraft:clock", 0), None);
     }
 }

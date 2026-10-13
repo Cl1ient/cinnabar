@@ -114,6 +114,8 @@ struct Catalog {
     #[serde(default)]
     retained: Vec<InstalledPack>,
     #[serde(default)]
+    restore: Vec<ActivePack>,
+    #[serde(default)]
     next_revision: u64,
 }
 
@@ -358,19 +360,46 @@ impl GlobalPackLibrary {
 
     /// Validates staged archives on the caller's worker without persisting pending changes.
     pub fn preview(&mut self) -> Result<Arc<ValidatedPackStack>, LibraryError> {
+        self.preview_selection(&self.active, &[])
+    }
+
+    /// Validates installed and previewed archives together without changing storage or selection.
+    pub fn preview_selection(
+        &self,
+        selection: &[ActivePack],
+        imports: &[crate::PreparedImport],
+    ) -> Result<Arc<ValidatedPackStack>, LibraryError> {
+        if selection.len() > MAX_PACKS {
+            return Err(AdmissionError::TooManyPacks.into());
+        }
+        let mut seen = std::collections::HashSet::new();
         let mut stack = ValidatedPackStack {
             packs: Box::default(),
             rejections: Box::default(),
         };
-        for active in self.active.iter().rev() {
-            let metadata = self.metadata(active).ok_or(LibraryError::UnknownPack)?;
+        for active in selection.iter().rev() {
+            if !seen.insert(active.id) {
+                return Err(AdmissionError::DuplicatePack.into());
+            }
+            let prepared = imports
+                .iter()
+                .flat_map(|import| &import.archives)
+                .find(|(pack, _)| pack.id == active.id && pack.revision == active.revision);
+            let metadata = self
+                .metadata(active)
+                .or_else(|| prepared.map(|(pack, _)| pack))
+                .ok_or(LibraryError::UnknownPack)?;
             if metadata
                 .min_engine_version
                 .is_some_and(|minimum| minimum > self.engine_version)
             {
                 return Err(LibraryError::NewerEngine);
             }
-            let bytes = read_bounded(&self.root.join(metadata.filename()), MAX_ARCHIVE_BYTES)?;
+            let bytes = if let Some((_, bytes)) = prepared {
+                bytes.clone()
+            } else {
+                read_bounded(&self.root.join(metadata.filename()), MAX_ARCHIVE_BYTES)?
+            };
             let (pack, _) = validate_archive_parts(
                 active.id,
                 &metadata.version_text(),

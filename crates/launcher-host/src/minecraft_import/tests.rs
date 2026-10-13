@@ -55,6 +55,186 @@ fn pack(root: &Path, name: &str, id: &str) -> PathBuf {
     directory
 }
 
+/// Writes a valid, uncompressed synthetic pack with the requested archive payload size.
+fn sized_pack(root: &Path, name: &str, id: &str, payload_bytes: usize) -> PathBuf {
+    use std::io::{Read, Write};
+    let path = root.join(format!("{name}.mcpack"));
+    std::fs::create_dir_all(root).unwrap();
+    let mut writer = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let manifest = serde_json::json!({"format_version":2,"header":{"uuid":id,"name":name,"version":[1,0,0]},"modules":[{"type":"resources"}]});
+    writer.start_file("manifest.json", options).unwrap();
+    writer
+        .write_all(&serde_json::to_vec(&manifest).unwrap())
+        .unwrap();
+    writer.start_file("payload.bin", options).unwrap();
+    std::io::copy(
+        &mut std::io::repeat(0).take(payload_bytes as u64),
+        &mut writer,
+    )
+    .unwrap();
+    writer.finish().unwrap();
+    path
+}
+
+#[test]
+fn combined_archive_limit_skips_activation_before_apply_and_keeps_other_data_importable() {
+    let root = tempfile::tempdir().unwrap();
+    let mut service = service(root.path());
+    let mut library = library(root.path());
+    let size = resource_pack::MAX_STACK_ARCHIVE_BYTES / 3 + 1024;
+    for (name, id) in [
+        ("first", "11111111-1111-1111-1111-111111111111"),
+        ("second", "22222222-2222-2222-2222-222222222222"),
+    ] {
+        let path = sized_pack(root.path(), name, id, size);
+        let imported = library.import(&path).unwrap().imported.remove(0);
+        library.activate(imported.id).unwrap();
+    }
+    library.apply().unwrap();
+    let original = library.active().to_vec();
+    let available = library.available().to_vec();
+    let packs = service.locations[0].path.join("resource_packs");
+    sized_pack(
+        &packs,
+        "large",
+        "33333333-3333-3333-3333-333333333333",
+        size,
+    );
+    pack(&packs, "small", "44444444-4444-4444-4444-444444444444");
+    std::fs::write(
+        service.locations[0]
+            .path
+            .join("minecraftpe/global_resource_packs.json"),
+        br#"[
+        {"pack_id":"33333333-3333-3333-3333-333333333333","version":[1,0,0]},
+        {"pack_id":"44444444-4444-4444-4444-444444444444","version":[1,0,0]}
+    ]"#,
+    )
+    .unwrap();
+    service.act(
+        Request {
+            action: Action::Begin,
+            state: state(),
+        },
+        &mut library,
+    );
+    let preview = service.preview.as_ref().unwrap();
+    assert_eq!(preview.selection.len(), original.len() + 1);
+    assert_eq!(
+        preview.selection[0].id.to_string(),
+        "44444444-4444-4444-4444-444444444444"
+    );
+    assert_eq!(&preview.selection[1..], original);
+    assert!(preview.skipped > 0);
+    assert_eq!(library.available(), available);
+    assert_eq!(library.active(), original);
+    assert!(!storage::has_backup(&service.config_root));
+    let applied = service.act(
+        Request {
+            action: Action::Apply,
+            state: state(),
+        },
+        &mut library,
+    );
+    assert!(applied.stack.is_some());
+    let imported = applied.state.unwrap();
+    assert_eq!(imported.settings.value("field_of_view"), 80);
+    assert_eq!(imported.servers.len(), 1);
+    assert_eq!(&imported.active[1..], original);
+}
+
+#[test]
+fn revert_restores_backup_revisions_after_pack_updates_and_restart() {
+    let root = tempfile::tempdir().unwrap();
+    let mut service = service(root.path());
+    let mut library = library(root.path());
+    let source = pack(
+        root.path(),
+        "original",
+        "11111111-1111-1111-1111-111111111111",
+    );
+    std::fs::write(source.join("marker.txt"), b"original").unwrap();
+    let imported = library
+        .import_prepared(resource_pack::prepare_import(&source).unwrap())
+        .unwrap()
+        .imported
+        .remove(0);
+    library.activate(imported.id).unwrap();
+    library.apply().unwrap();
+    let mut old = state();
+    old.active = library.active().to_vec();
+    service.act(
+        Request {
+            action: Action::Begin,
+            state: old.clone(),
+        },
+        &mut library,
+    );
+    let imported = service
+        .act(
+            Request {
+                action: Action::Apply,
+                state: old.clone(),
+            },
+            &mut library,
+        )
+        .state
+        .unwrap();
+    library.commit_selection(&imported.active).unwrap();
+    std::fs::write(source.join("marker.txt"), b"updated").unwrap();
+    library
+        .import_prepared(resource_pack::prepare_import(&source).unwrap())
+        .unwrap();
+    library.apply().unwrap();
+    drop(library);
+    let mut library = GlobalPackLibrary::open(root.path().join("packs"), [1, 26, 50]).unwrap();
+    service.act(
+        Request {
+            action: Action::Revert,
+            state: imported.clone(),
+        },
+        &mut library,
+    );
+    let restored = service.act(
+        Request {
+            action: Action::ConfirmRevert,
+            state: imported,
+        },
+        &mut library,
+    );
+    let view = resource_pack::LayeredPackView::new(restored.stack.unwrap());
+    assert_eq!(view.read("marker.txt").unwrap().as_ref(), b"original");
+    let restored = restored.state.unwrap();
+    assert_eq!(restored.active, old.active);
+    assert_eq!(restored.settings, old.settings);
+    assert_eq!(restored.servers, old.servers);
+    assert_eq!(restored.video, old.video);
+    library.commit_selection(&restored.active).unwrap();
+    service.act(
+        Request {
+            action: Action::Begin,
+            state: restored.clone(),
+        },
+        &mut library,
+    );
+    let imported_again = service
+        .act(
+            Request {
+                action: Action::Apply,
+                state: restored,
+            },
+            &mut library,
+        )
+        .state
+        .unwrap();
+    assert_eq!(
+        imported_again.active, old.active,
+        "import must retain the previewed installed revision"
+    );
+}
+
 #[test]
 fn copied_packs_follow_imported_priority_and_revert_keeps_them_installed() {
     let root = tempfile::tempdir().unwrap();

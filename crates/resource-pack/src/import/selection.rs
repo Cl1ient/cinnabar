@@ -81,7 +81,16 @@ pub fn merge_global_selection(
             skipped += 1;
             continue;
         };
-        if ordered.len() >= MAX_PACKS
+        let remaining = current
+            .iter()
+            .filter(|old| {
+                old.id != entry.id
+                    && !ordered
+                        .iter()
+                        .any(|active: &crate::ActivePack| active.id == old.id)
+            })
+            .count();
+        if ordered.len() + remaining >= MAX_PACKS
             || ordered
                 .iter()
                 .any(|active: &crate::ActivePack| active.id == entry.id)
@@ -111,6 +120,36 @@ pub fn merge_global_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_existing_selection_is_preserved_when_imported_additions_exceed_the_limit() {
+        let current = (1..=MAX_PACKS)
+            .map(|id| crate::ActivePack {
+                id: Uuid::from_u128(id as u128),
+                subpack: String::new(),
+                revision: 1,
+            })
+            .collect::<Vec<_>>();
+        let added = Uuid::from_u128(MAX_PACKS as u128 + 1);
+        let available = [crate::InstalledPack {
+            id: added,
+            version: [1, 0, 0],
+            name: "Extra".into(),
+            description: String::new(),
+            min_engine_version: None,
+            subpacks: Vec::new(),
+            revision: 2,
+        }];
+        let imported = [GlobalSelectionEntry {
+            id: added,
+            version: [1, 0, 0],
+            subpack: String::new(),
+        }];
+        let (selected, skipped) =
+            merge_global_selection(&current, &available, &imported, [1, 26, 50]);
+        assert_eq!(selected, current);
+        assert_eq!(skipped, 1);
+    }
 
     #[test]
     fn missing_versions_and_unsupported_subpacks_are_skipped_without_reordering_survivors() {

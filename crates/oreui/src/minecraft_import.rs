@@ -13,12 +13,12 @@ use launcher::{
 };
 use ui::UiRect;
 use ui_engine::{
-    engine::screen::{PaintError, PaintFrame},
-    scroll::ScrollArea,
+    engine::{
+        rect,
+        screen::{PaintError, PaintFrame},
+    },
+    menu_scroll::MenuScrolls,
 };
-
-/// The import modal's click targets and scrolling body areas.
-type ImportTargets = (Vec<(MenuAction, UiRect)>, Vec<ScrollArea>);
 
 impl OreUiScreen {
     /// Draws the consent, profile, preview and restore steps with the standard modal controls.
@@ -26,8 +26,9 @@ impl OreUiScreen {
         &mut self,
         view: &MenuView,
         size: [f32; 2],
+        scrolls: &mut MenuScrolls<MenuAction>,
         frame: &mut PaintFrame<'_>,
-    ) -> Result<ImportTargets, PaintError> {
+    ) -> Result<Vec<(MenuAction, UiRect)>, PaintError> {
         let state = &view.minecraft_import;
         let action = |action| MenuAction::MinecraftImport(action);
         let items = if state.phase == Phase::Profiles {
@@ -85,21 +86,56 @@ impl OreUiScreen {
         };
         let originals = self
             .originals
-            .as_deref()
+            .clone()
             .filter(|_| self.look == Look::Originals);
-        let mut canvas = Canvas::new(
-            &mut *frame.nodes,
-            &mut *frame.next,
-            &mut *frame.layouts,
-            frame.font,
-            frame.metrics,
-            frame.solid_page,
-            originals,
-        );
-        canvas.appearance = Appearance::from_dark(view.settings_options.oreui_dark_mode());
-        canvas.seconds = frame.now;
-        canvas.transitions = Some(&mut self.transitions);
-        modal::draw(&mut canvas, view, size, &dialog)?;
-        Ok((canvas.hits, canvas.scrolls))
+        let rollback = (frame.nodes.len(), *frame.next);
+        let mut offsets = scrolls.offsets().clone();
+        let mut first = true;
+        loop {
+            frame.nodes.truncate(rollback.0);
+            *frame.next = rollback.1;
+            let mut canvas = Canvas::new(
+                &mut *frame.nodes,
+                &mut *frame.next,
+                &mut *frame.layouts,
+                frame.font,
+                frame.metrics,
+                frame.solid_page,
+                originals.as_deref(),
+            );
+            canvas.appearance = Appearance::from_dark(view.settings_options.oreui_dark_mode());
+            canvas.seconds = frame.now;
+            canvas.transitions = Some(&mut self.transitions);
+            canvas.offsets = offsets.clone();
+            let focused = modal::draw(&mut canvas, view, size, &dialog)?;
+            let (hits, areas) = (canvas.hits, canvas.scrolls);
+            let used = offsets.get(modal::SCROLL).copied().unwrap_or(0.0);
+            if focused.is_none() {
+                scrolls.observe_focus(view.focused_action);
+            }
+            let revealed = focused.and_then(|item| {
+                let bounds = |b: super::paint::Bounds| rect(b[0], b[1], b[2], b[3]).ok();
+                Some(scrolls.reveal_focus(
+                    modal::SCROLL,
+                    view.focused_action,
+                    bounds(item.bounds),
+                    bounds(item.viewport)?,
+                    item.max,
+                ))
+            });
+            match revealed {
+                Some(offset) if first && (offset - used).abs() > f32::EPSILON => {
+                    offsets.insert(modal::SCROLL.to_owned(), offset);
+                    first = false;
+                }
+                _ => {
+                    scrolls.set_areas(areas);
+                    return Ok(hits);
+                }
+            }
+        }
     }
 }
+
+#[cfg(test)]
+mod tests;

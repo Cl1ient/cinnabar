@@ -155,17 +155,17 @@ impl Service {
                 );
                 state.active = library.active().to_vec();
                 storage::backup(&self.config_root, &state)?;
+                library.retain_for_restore(&state.active)?;
                 let mut skipped = preview.skipped;
                 for pack in preview.packs {
-                    library.import_prepared(pack)?;
-                }
-                for active in &mut preview.selection {
-                    let pack = library
-                        .available()
-                        .iter()
-                        .find(|pack| pack.id == active.id)
-                        .context("Previewed pack is no longer available")?;
-                    active.revision = pack.revision;
+                    let imported = library.import_prepared(pack)?;
+                    for active in &mut preview.selection {
+                        if let Some(pack) =
+                            imported.imported.iter().find(|pack| pack.id == active.id)
+                        {
+                            active.revision = pack.revision;
+                        }
+                    }
                 }
                 let stack = library.stage_selection(&preview.selection)?;
                 skipped += preview.options.apply(&mut state.settings);

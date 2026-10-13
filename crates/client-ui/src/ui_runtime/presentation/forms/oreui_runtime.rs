@@ -200,12 +200,12 @@ impl UiPresentationRuntime {
             next,
             renderers: &mut [],
         };
-        let (hits, scrolls) = self
-            .screens
-            .oreui
-            .paint_minecraft_import(view, size, &mut frame)?;
-        self.menu_scrolls.set_areas(scrolls);
-        Ok(hits)
+        Ok(self.screens.oreui.paint_minecraft_import(
+            view,
+            size,
+            &mut self.menu_scrolls,
+            &mut frame,
+        )?)
     }
 
     /// Draws the quit confirmation; its targets alone then count.

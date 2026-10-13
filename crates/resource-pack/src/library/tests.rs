@@ -9,6 +9,39 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
+fn restore_revisions_survive_updates_and_restart_until_the_backup_is_replaced() {
+    let fixture = Fixture::new();
+    let mut library = fixture.library();
+    let id = Uuid::from_u128(123);
+    let manifest = manifest(123, "resources", "");
+    let source = fixture.write(
+        "original.mcpack",
+        &zip(&[("manifest.json", manifest.as_bytes())]),
+    );
+    library.import(&source).unwrap();
+    library.activate(id).unwrap();
+    library.apply().unwrap();
+    let original = library.active().to_vec();
+    library.retain_for_restore(&original).unwrap();
+    library.import(&source).unwrap();
+    library.apply().unwrap();
+    assert_ne!(library.active(), original);
+    let mut restarted = fixture.library();
+    assert!(restarted.stage_selection(&original).is_ok());
+    restarted.commit_selection(&original).unwrap();
+    let latest = restarted.available()[0].revision;
+    let mut replacement = original.clone();
+    replacement[0].revision = latest;
+    restarted.stage_selection(&replacement).unwrap();
+    restarted.retain_for_restore(&replacement).unwrap();
+    restarted.commit_selection(&replacement).unwrap();
+    assert!(matches!(
+        restarted.stage_selection(&original),
+        Err(LibraryError::UnknownPack)
+    ));
+}
+
+#[test]
 fn directory_preview_reuses_validation_and_installs_the_previewed_bytes() {
     let fixture = Fixture::new();
     let directory = fixture.0.join("user-pack");

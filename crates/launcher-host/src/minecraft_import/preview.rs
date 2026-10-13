@@ -109,13 +109,23 @@ pub(super) fn prepare(source: &Source, state: &UserState, library: &GlobalPackLi
         .cloned()
         .chain(pack_metadata.iter().map(|pack| (**pack).clone()))
         .collect::<Vec<_>>();
-    let (ordered, selection_skips) = resource_pack::merge_global_selection(
-        library.active(),
-        &available,
-        &selection.entries,
-        library.engine_version(),
-    );
-    skipped += selection_skips;
+    let mut accepted = Vec::new();
+    let mut ordered = library.active().to_vec();
+    for entry in &selection.entries {
+        accepted.push(entry.clone());
+        let (candidate, selection_skips) = resource_pack::merge_global_selection(
+            library.active(),
+            &available,
+            &accepted,
+            library.engine_version(),
+        );
+        if selection_skips != 0 || library.preview_selection(&candidate, &packs).is_err() {
+            accepted.pop();
+            skipped += 1;
+        } else {
+            ordered = candidate;
+        }
+    }
     let active_names = ordered
         .iter()
         .filter_map(|active| {

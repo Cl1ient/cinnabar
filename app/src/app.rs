@@ -607,12 +607,14 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     let local_player_skin =
         client_shell::player_skin::LocalPlayerSkin::load(&layout, &args.display_name);
     let screenshots_dir = layout.screenshots_dir();
-    let menu = MenuRuntime::new_with_layout(
+    let minecraft_import = launcher_host::minecraft_import::startup(&layout.user_config_root);
+    let menu = MenuRuntime::new_with_import_snapshot(
         !connection_requested,
         args.gui_scale,
         args.display_name.clone(),
         layout,
         local_player_skin.clone(),
+        minecraft_import,
     )
     .with_language_assets(
         loaded_assets.selected_path.clone(),

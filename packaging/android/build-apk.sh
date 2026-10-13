@@ -47,7 +47,10 @@ export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=$page_flags"
 cargo ndk -t "$abi" --platform "$min_sdk" build --profile "$profile" --locked -p "$client_package"
 cargo ndk -t "$abi" --platform "$min_sdk" build --profile "$profile" --locked -p asset-compiler --bin assetc
 target_dir="$(cargo metadata --format-version 1 --no-deps --locked | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')"
-rust_out="$target_dir/$triple/$profile"
+# Cargo writes the `dev` profile's artifacts under `debug`.
+profile_dir="$profile"
+[[ "$profile" != dev ]] || profile_dir=debug
+rust_out="$target_dir/$triple/$profile_dir"
 install -m 0755 "$rust_out/lib$client_library.so" "$libs/lib$client_library.so"
 install -m 0755 "$rust_out/assetc" "$libs/$(pin compiler_library)"
 install -m 0644 "$toolchain/sysroot/usr/lib/$triple/libc++_shared.so" "$libs/libc++_shared.so"

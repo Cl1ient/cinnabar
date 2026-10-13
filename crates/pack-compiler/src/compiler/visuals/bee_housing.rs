@@ -146,24 +146,16 @@ pub(in crate::compiler) fn bee_housing_material_descriptors(
 
     let mut descriptors = Vec::with_capacity(routes.len());
     for (key, expected_path) in routes {
-        let path = if key.ends_with("_front") {
-            expected_path
+        let (path, state_variant) = if key.ends_with("_front") {
+            let paths = pack.terrain.get_exact_pair_plain(key)?;
+            let index = paths.iter().position(|&path| path == expected_path)?;
+            (paths[index], index as u32)
         } else {
             let path = pack.terrain.get_exact_singleton_plain(key)?;
             if path != expected_path {
                 return None;
             }
-            path
-        };
-        let state_variant = if key.ends_with("_front") {
-            let paths = if key == "bee_nest_front" {
-                nest_front
-            } else {
-                hive_front
-            };
-            paths.iter().position(|&source| source == path)? as u32
-        } else {
-            0
+            (path, 0)
         };
         if pack.flipbooks.iter().any(|flipbook| {
             flipbook.atlas_tile.as_ref() == key || flipbook.texture_path.as_ref() == path
@@ -183,3 +175,7 @@ pub(in crate::compiler) fn bee_housing_material_descriptors(
     }
     descriptors.try_into().ok()
 }
+
+#[cfg(test)]
+#[path = "bee_housing/tests.rs"]
+mod tests;

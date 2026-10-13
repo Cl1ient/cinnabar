@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use assets::MaterialKeys;
+use assets::material_keys::MaterialKeys;
 use resource_pack::LayeredPackView;
 use serde_json::Value;
 
@@ -22,6 +22,11 @@ pub fn destinations(
             base.flipbook_destinations()
                 .map(|(key, counts)| (key.to_owned(), counts.to_vec())),
         );
+        for (key, entry) in base.terrain_entries() {
+            if let Some(variants) = entry_counts(entry) {
+                counts.insert(key.to_owned(), variants);
+            }
+        }
     }
     for bytes in view.read_layers("textures/terrain_texture.json") {
         let Some(Value::Object(data)) =
@@ -33,19 +38,22 @@ pub fn destinations(
             if counts.len() >= MAX_CATALOG_ENTRIES && !counts.contains_key(&key) {
                 continue;
             }
-            let values = match &entry["textures"] {
-                Value::Array(values) => values.as_slice(),
-                value => std::slice::from_ref(value),
-            };
-            if values.is_empty() || values.len() > MAX_CATALOG_ENTRIES {
-                continue;
-            }
-            if let Some(variants) = values.iter().map(uv_count).collect::<Option<Vec<_>>>() {
+            if let Some(variants) = entry_counts(&entry) {
                 counts.insert(key, variants);
             }
         }
     }
     counts
+}
+
+/// Counts only fully admitted terrain entries so malformed layers keep lower destination bounds.
+fn entry_counts(entry: &Value) -> Option<Vec<u32>> {
+    crate::pack_textures::terrain::parse_entry(entry)?;
+    let values = match &entry["textures"] {
+        Value::Array(values) => values.as_slice(),
+        value => std::slice::from_ref(value),
+    };
+    values.iter().map(uv_count).collect()
 }
 
 /// Counts valid path alternatives at one state-selected atlas index.

@@ -310,3 +310,27 @@ fn prefs_persist_and_default_off() {
         "prefs listed as a world"
     );
 }
+
+/// A world's captured view is kept beside it and read back whole; worlds that are not saved
+/// keep none.
+#[test]
+fn thumbnails_are_kept_beside_their_world() {
+    let dir = scratch();
+    let store = store(&dir);
+    let world = store.create(&new_world("Pictured")).expect("create");
+    assert_eq!(store.thumbnail(&world.id), None);
+    store
+        .save_thumbnail(&world.id, b"first view")
+        .expect("save a thumbnail");
+    store
+        .save_thumbnail(&world.id, b"later view")
+        .expect("replace it");
+    assert_eq!(
+        store.thumbnail(&world.id).as_deref(),
+        Some(&b"later view"[..])
+    );
+    assert!(matches!(
+        store.save_thumbnail("0123456789abcdef", b"view"),
+        Err(WorldError::NotFound)
+    ));
+}

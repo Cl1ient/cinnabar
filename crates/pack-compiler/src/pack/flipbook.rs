@@ -218,6 +218,7 @@ mod review_tests {
         std::fs::write(&path, serde_json::to_vec(&entries).unwrap()).unwrap();
         let terrain = TerrainTextureMap {
             entries: Default::default(),
+            runtime_entries: Default::default(),
             position_variations: Default::default(),
         };
         assert!(matches!(

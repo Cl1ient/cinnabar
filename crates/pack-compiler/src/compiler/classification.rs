@@ -360,6 +360,16 @@ pub(in crate::compiler) const fn liquid_material_flags(name: &str) -> u32 {
 }
 
 pub(in crate::compiler) fn cross_texture_face(record: &RegistryRecord) -> BlockFace {
+    if record.name.as_ref() == "minecraft:sweet_berry_bush" {
+        return match canonical_state_u32(&record.canonical_state, "growth").unwrap_or(0) {
+            0 => BlockFace::Down,
+            1 => BlockFace::Up,
+            2 => BlockFace::North,
+            3 => BlockFace::South,
+            4 => BlockFace::West,
+            _ => BlockFace::East,
+        };
+    }
     if canonical_state_u32(&record.canonical_state, "upper_block_bit") == Some(1) {
         BlockFace::Up
     } else {

@@ -5,6 +5,41 @@ use client_runtime::pack_admission::ResourcePackAdmissionState;
 /// Serializes tests that go through the process-wide block overlay cache.
 static OVERLAY_CACHE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[test]
+fn unchanged_icon_subscribers_reuse_outputs_without_baking_block_art() {
+    let stack = resource_pack::validate_handoff(protocol::ResourcePackHandoff::default());
+    let previous =
+        std::sync::Arc::new(client_ui::ui_runtime::presentation::SessionIcons::default());
+    let baked = std::cell::Cell::new(0);
+    let bake = || {
+        baked.set(baked.get() + 1);
+        super::BlockIcons {
+            icons: vec![client_ui::ui_runtime::presentation::SessionIcon {
+                identifier: "test:cube".into(),
+                metadata: 0,
+                width: 1,
+                height: 1,
+                rgba8: vec![255; 4].into(),
+            }],
+            ..Default::default()
+        }
+    };
+    let (reused, reads) =
+        super::compile_icons(&stack, &|| false, false, Some(previous.clone()), &[], bake).unwrap();
+    assert!(std::sync::Arc::ptr_eq(reused.as_ref().unwrap(), &previous));
+    assert!(reads.is_none());
+    assert_eq!(baked.get(), 0);
+    assert!(
+        super::compile_icons(&stack, &|| true, true, Some(previous.clone()), &[], bake).is_none()
+    );
+    assert_eq!(baked.get(), 0);
+    let (fresh, reads) =
+        super::compile_icons(&stack, &|| false, true, Some(previous), &[], bake).unwrap();
+    assert_eq!(baked.get(), 1);
+    assert_eq!(fresh.unwrap().icons[0].identifier.as_ref(), "test:cube");
+    assert!(reads.is_some());
+}
+
 /// Serializes fixtures that share the retained block-overlay cache.
 pub(super) fn overlay_cache() -> std::sync::MutexGuard<'static, ()> {
     OVERLAY_CACHE_LOCK
@@ -521,7 +556,7 @@ fn overlay_cache_reuses_the_previous_session_compile() {
 fn reapplied_stack_reuses_blocks_identical_to_a_fresh_compile() {
     use std::sync::Arc;
     let _cache = overlay_cache();
-    let keys = assets::MaterialKeys::from_entries([(5, "reapply_key")]);
+    let keys = assets::material_keys::MaterialKeys::from_entries([(5, "reapply_key")]);
     let blocks = protocol::CustomBlocks::default();
     let limit = super::overlay_texture_layer_limit();
     let stack = |id| {
@@ -540,7 +575,7 @@ fn reapplied_stack_reuses_blocks_identical_to_a_fresh_compile() {
     };
     let fresh = |stack: &Arc<resource_pack::ValidatedPackStack>| {
         let view = resource_pack::LayeredPackView::tracked(stack.clone());
-        super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit)
+        super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit, None)
     };
     let mut compiles = 0;
     let mut cached = |stack: &Arc<resource_pack::ValidatedPackStack>| {
@@ -553,7 +588,7 @@ fn reapplied_stack_reuses_blocks_identical_to_a_fresh_compile() {
             limit,
             || {
                 compiles += 1;
-                super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit)
+                super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit, None)
                     .map(Arc::new)
             },
         )
@@ -726,6 +761,7 @@ fn the_same_blocks_share_the_extended_carrier_and_its_texture_identity() {
         Arc::new(super::CompiledBlockOverlay {
             overlay: Default::default(),
             gaps: Default::default(),
+            vanilla_carried: Vec::new(),
         })
     };
     let overlay = compiled();

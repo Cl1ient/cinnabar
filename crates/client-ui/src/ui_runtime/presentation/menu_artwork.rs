@@ -64,11 +64,13 @@ struct Artwork {
     pixels: Vec<u8>,
 }
 
-/// What an atlas is packed from: the service art at its sides plus the
+/// What an atlas is packed from: the service art at its sides, images held in memory, and the
 /// engine's oversized textures by key.
 #[derive(Clone, Default)]
 pub(super) struct ArtworkSet {
     pub(super) paths: Vec<(String, u32)>,
+    /// Encoded images held in memory, by the key they draw under, such as world thumbnails.
+    pub(super) images: Vec<(String, Arc<[u8]>)>,
     pub(super) oversized: Vec<(String, Arc<[u8]>)>,
     pub(super) skins: Vec<SkinArtwork>,
     pub(super) capes: Vec<CapeArtwork>,
@@ -78,6 +80,12 @@ impl ArtworkSet {
     /// Equality without comparing texture bytes: engine textures by key and payload.
     pub(super) fn same(&self, other: &Self) -> bool {
         self.paths == other.paths
+            && self.images.len() == other.images.len()
+            && self
+                .images
+                .iter()
+                .zip(&other.images)
+                .all(|(a, b)| a.0 == b.0 && Arc::ptr_eq(&a.1, &b.1))
             && self.capes.len() == other.capes.len()
             && self.capes.iter().zip(&other.capes).all(|(a, b)| a.same(b))
             && self.skins.len() == other.skins.len()
@@ -358,6 +366,12 @@ impl DecodeCache {
 /// `set`'s distinct sources in draw priority, capped like the atlas.
 fn sources(set: &ArtworkSet) -> Vec<Source> {
     let mut unique = BTreeSet::new();
+    let images: Vec<_> = set
+        .images
+        .iter()
+        .filter(|(key, _)| unique.insert(key.clone()))
+        .map(|(key, bytes)| Source::Bytes(key.clone(), Arc::clone(bytes)))
+        .collect();
     let files = set
         .paths
         .iter()
@@ -376,6 +390,8 @@ fn sources(set: &ArtworkSet) -> Vec<Source> {
         .collect();
     let remaining = MAX_ARTWORKS - all.len();
     all.extend(set.skins.iter().take(remaining).cloned().map(Source::Skin));
+    let remaining = MAX_ARTWORKS - all.len();
+    all.extend(images.into_iter().take(remaining));
     let remaining = MAX_ARTWORKS - all.len();
     all.extend(files.take(remaining));
     let remaining = MAX_ARTWORKS - all.len();
@@ -565,6 +581,55 @@ pub fn view_paths(view: &launcher::menu::MenuView) -> Vec<(String, u32)> {
         .collect()
 }
 
+/// The edited world first, or the worlds list's visible rows, within the atlas budget.
+fn view_images(
+    view: &launcher::menu::MenuView,
+    hits: &[(launcher::menu::MenuAction, ui::UiRect)],
+) -> Vec<(String, Arc<[u8]>)> {
+    use launcher::{
+        local_worlds::Screen,
+        menu::{MenuAction, MenuScreen},
+    };
+    if !matches!(view.screen, MenuScreen::Play | MenuScreen::Settings) {
+        return Vec::new();
+    }
+    if matches!(view.local.screen, Screen::Edit | Screen::ConfirmDelete) {
+        let edited = view
+            .local
+            .edited
+            .as_ref()
+            .map(|world| launcher::local_worlds::world::thumbnail_key(&world.id));
+        return view
+            .local_worlds
+            .iter()
+            .filter_map(|world| world.thumbnail.as_ref())
+            .find(|thumbnail| Some(&thumbnail.key) == edited.as_ref())
+            .map(|thumbnail| (thumbnail.key.clone(), Arc::clone(&thumbnail.image)))
+            .into_iter()
+            .collect();
+    }
+    if view.screen != MenuScreen::Play || view.local.screen != Screen::List {
+        return Vec::new();
+    }
+    let mut indices: Vec<_> = hits
+        .iter()
+        .filter_map(|(action, _)| match action {
+            MenuAction::PlayLocalWorld(index) => Some(*index),
+            _ => None,
+        })
+        .collect();
+    // The first paint has no row geometry yet; it supplies the actual visible set next frame.
+    if indices.is_empty() {
+        indices.extend(0..view.local_worlds.len().min(FIRST_BATCH));
+    }
+    indices
+        .into_iter()
+        .filter_map(|index| view.local_worlds.get(index))
+        .filter_map(|world| world.thumbnail.as_ref())
+        .map(|thumbnail| (thumbnail.key.clone(), Arc::clone(&thumbnail.image)))
+        .collect()
+}
+
 /// Queues Profile card art first, followed by only the achievements Overview draws.
 /// The Marketplace draws only its offer art, so the start screen's art does not take its pages.
 fn store_art(view: &launcher::menu::MenuView) -> Vec<(String, u32)> {
@@ -634,3 +699,6 @@ mod store_tests;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod world_preview_tests;

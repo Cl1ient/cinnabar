@@ -81,8 +81,30 @@ pub(crate) fn glint_tint_source() -> String {
     format!("vec3<f32>({red:?}, {green:?}, {blue:?})")
 }
 
+/// Generates stem colours from the same bounded material contract as the compiler.
+fn stem_colours_source() -> String {
+    let colours = (0..=7)
+        .map(|growth| {
+            let rgb = assets::stem::colour(growth).expect("bounded stem growth");
+            format!(
+                "vec3<f32>({}, {}, {}) / 255.0",
+                rgb[0] as f32, rgb[1] as f32, rgb[2] as f32
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "const STEM_COLOURS: array<vec3<f32>, 8> = array({colours});\nfn stem_colour(flags: u32) -> vec3<f32> {{\n if ((flags & {}u) == 0u) {{ return vec3(1.0); }}\n return STEM_COLOURS[(flags & {}u) >> {}u];\n}}",
+        assets::stem::MATERIAL_FLAG,
+        assets::stem::GROWTH_MASK,
+        assets::stem::GROWTH_SHIFT,
+    )
+}
+
 pub(crate) fn source(source: &str) -> String {
     source
+        .replace("// STEM_COLOURS", &stem_colours_source())
+        .replace("MATERIAL_STEM_FLAG", &format!("{}u", assets::stem::MATERIAL_FLAG))
         .replace("ITEM_GLINT_UV_SCALE", &format!("{:?}", render_model::ITEM_GLINT_UV_SCALE))
         .replace("GLINT_TINT_RGB", &glint_tint_source())
         .replace("ACTOR_LIGHT_WORLD_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_WORLD))

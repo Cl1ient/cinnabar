@@ -147,6 +147,10 @@ pub(in crate::compiler) fn cake_material_descriptors(
     )
 }
 
+#[cfg(test)]
+#[path = "cake/tests.rs"]
+mod source_tests;
+
 pub(in crate::compiler) fn cake_source_alpha_is_exact(root: &Path, pack: &PackSources) -> bool {
     if cake_material_descriptors(pack).is_none() {
         return false;

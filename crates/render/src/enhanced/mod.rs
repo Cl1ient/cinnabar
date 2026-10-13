@@ -13,7 +13,7 @@ pub(crate) mod graph;
 mod graph_tests;
 #[cfg(feature = "enhanced")]
 mod hand_layer;
-#[cfg(feature = "enhanced")]
+#[cfg(any(test, feature = "enhanced"))]
 mod materials;
 #[cfg(feature = "enhanced")]
 mod post;

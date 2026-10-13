@@ -148,7 +148,7 @@ mod tests {
                         json: "{}".into(),
                         model: protocol::ServerFormModel::TextMenu(protocol::TextMenuForm {
                             title: "Test".into(),
-                            content: String::new(),
+                            content: String::new().into(),
                             buttons: vec!["Choose".into()].into(),
                             button_images: [].into(),
                             omitted_images: 0,

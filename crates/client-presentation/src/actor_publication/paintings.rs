@@ -65,7 +65,7 @@ impl PaintingRoutes {
             let Some(painting) = &actor.painting else {
                 continue;
             };
-            if !actor_within_render_distance(actor, partial_tick, view) {
+            if actor.is_invisible() || !actor_within_render_distance(actor, partial_tick, view) {
                 continue;
             }
             let motive = motive(&painting.motive);

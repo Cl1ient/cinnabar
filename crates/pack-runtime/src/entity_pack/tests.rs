@@ -78,5 +78,12 @@ fn texture_only_painting_pack_reaches_runtime_bindings_and_reload_tracking() {
             [30, 90, 150, 255]
         );
     }
-    assert!(view.dependencies().unwrap().snapshot().iter().any(|dependency| matches!(dependency, resource_pack::PackDependency::File { path: file, .. } if file == &path)));
+    let dependencies = view.dependencies().unwrap().snapshot();
+    for expected in [
+        path,
+        "textures/painting/meditative.png".into(),
+        "textures/painting/meditative.tga".into(),
+    ] {
+        assert!(dependencies.iter().any(|dependency| matches!(dependency, resource_pack::PackDependency::File { path, .. } if path == &expected)), "changes to present and missing painting rasters invalidate runtime compilation");
+    }
 }

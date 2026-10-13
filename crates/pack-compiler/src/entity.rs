@@ -49,7 +49,7 @@ pub use pack::{
 use collect::{collect_family, collect_optional_family, collect_optional_file};
 use geometry::parse_geometry;
 pub(crate) use json::parse_fully_unique_json;
-use json::{parse_semantic_json, parse_unique_json};
+use json::{parse_semantic_json, parse_unique_json, validate_root_fields};
 use source::validate_source_manifest;
 pub(crate) use source::{open_source_handle, read_bounded_source};
 
@@ -259,6 +259,7 @@ fn compile_with_behavior(
         &mut source_payloads,
         &mut symbols,
         &mut geometries,
+        None,
     )?;
     total_source_bytes = total_source_bytes
         .checked_add(native_binding_bytes)
@@ -971,27 +972,6 @@ fn insert_symbol(
     Ok(())
 }
 
-fn validate_root_fields(
-    value: &Value,
-    path: &Path,
-    allowed: &[&str],
-    required: &[&str],
-) -> Result<(), AssetError> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| invalid(format!("JSON root must be an object in {}", path.display())))?;
-    if object
-        .keys()
-        .any(|field| !allowed.contains(&field.as_str()))
-        || required.iter().any(|field| !object.contains_key(*field))
-    {
-        return Err(invalid(format!(
-            "unknown or missing entity family root field in {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
 pub(crate) fn validate_vanilla_source_manifest(source: &[u8]) -> Result<[u8; 32], AssetError> {
     validate_source_manifest(source)
 }

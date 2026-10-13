@@ -263,16 +263,18 @@ fn compile_selected(
         });
         payloads.insert(path, bytes.into());
     }
-    total += super::painting::complete_bindings(
+    let remaining_budget = (
+        MAX_PACK_ENTITY_SOURCES - sources.len(),
+        MAX_PACK_ENTITY_BYTES - total,
+    );
+    super::painting::complete_bindings(
         Path::new(""),
         &mut sources,
         &mut payloads,
         &mut symbols,
         &mut geometries,
+        Some(remaining_budget),
     )?;
-    if total > MAX_PACK_ENTITY_BYTES || sources.len() > MAX_PACK_ENTITY_SOURCES {
-        return Err(invalid("painting pack bindings exceed source budget"));
-    }
     // Authored attachables and texture-only artwork each make a pack worth retaining.
     let has_attachables = sources
         .iter()

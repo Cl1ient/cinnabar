@@ -5,13 +5,14 @@ use serde_json::json;
 
 const CONTROLLER: &str = "controller.render.cinnabar.painting";
 
-/// Adds original static bindings for every painting part with a retained raster.
+/// Adds complete static parts with retained rasters; bounded packs keep authored sources first.
 pub(super) fn complete_bindings(
     root: &Path,
     sources: &mut Vec<EntityAssetSource>,
     payloads: &mut SourcePayloads,
     symbols: &mut BTreeMap<(EntityAssetKind, Box<str>, Box<str>), PendingSymbol>,
     geometries: &mut BTreeMap<(Box<str>, Box<str>), PendingGeometry>,
+    remaining_budget: Option<(usize, usize)>,
 ) -> Result<usize, AssetError> {
     let has_texture = |texture: &str| {
         ["png", "tga"]
@@ -32,24 +33,14 @@ pub(super) fn complete_bindings(
             })
         })
         .collect();
-    if parts.is_empty() {
+    if parts.is_empty()
+        || remaining_budget.is_some_and(|(sources, bytes)| sources < 3 || bytes == 0)
+    {
         return Ok(0);
     }
     let mut bytes_added = 0;
-    let mut add = |path: String, value: Value| -> Result<(), AssetError> {
-        let bytes =
-            serde_json::to_vec(&value).map_err(|_| invalid("painting binding encoding failed"))?;
-        parse_source(&path, &root.join(&path), &bytes, symbols, geometries)?;
-        sources.push(EntityAssetSource {
-            path: path.clone().into(),
-            source_bytes: bytes.len() as u32,
-            source_sha256: Sha256::digest(&bytes).into(),
-        });
-        bytes_added += bytes.len();
-        payloads.insert(path.into(), bytes.into());
-        Ok(())
-    };
-    add(
+    let mut sources_added = 0;
+    let mut controller = Some(encode_document(
         "render_controllers/_cinnabar/paintings.json".into(),
         json!({
             "format_version":"1.8.0", "render_controllers": {CONTROLLER: {
@@ -57,12 +48,12 @@ pub(super) fn complete_bindings(
                 "textures":["Texture.default"]
             }}
         }),
-    )?;
+    )?);
     for (motive, border, texture) in parts {
         let identifier = motive.part_identifier(border);
         let part = if border { "border" } else { "front" };
         let geometry = format!("geometry.cinnabar.painting.{}.{}", motive.title, part);
-        add(
+        let entity = encode_document(
             format!("entity/_cinnabar/painting_{}_{}.json", motive.title, part),
             json!({
                 "format_version":"1.10.0", "minecraft:client_entity":{"description":{
@@ -72,15 +63,42 @@ pub(super) fn complete_bindings(
                 }}
             }),
         )?;
-        add(
+        let geometry = encode_document(
             format!(
                 "models/entity/_cinnabar/painting_{}_{}.json",
                 motive.title, part
             ),
             geometry_document(motive, border, &geometry),
         )?;
+        let next_sources = sources_added + 2 + usize::from(controller.is_some());
+        let next_bytes = bytes_added
+            + entity.1.len()
+            + geometry.1.len()
+            + controller.as_ref().map_or(0, |(_, bytes)| bytes.len());
+        if remaining_budget.is_some_and(|(count, bytes)| next_sources > count || next_bytes > bytes)
+        {
+            continue;
+        }
+        for (path, bytes) in controller.take().into_iter().chain([entity, geometry]) {
+            parse_source(&path, &root.join(&path), &bytes, symbols, geometries)?;
+            sources.push(EntityAssetSource {
+                path: path.clone().into(),
+                source_bytes: bytes.len() as u32,
+                source_sha256: Sha256::digest(&bytes).into(),
+            });
+            payloads.insert(path.into(), bytes.into());
+        }
+        sources_added = next_sources;
+        bytes_added = next_bytes;
     }
     Ok(bytes_added)
+}
+
+/// Serializes one original generated document before testing whole-part admission.
+fn encode_document(path: String, value: Value) -> Result<(String, Vec<u8>), AssetError> {
+    let bytes =
+        serde_json::to_vec(&value).map_err(|_| invalid("painting binding encoding failed"))?;
+    Ok((path, bytes))
 }
 
 /// Builds the centered front plane or tiled one-pixel border independently of raster resolution.

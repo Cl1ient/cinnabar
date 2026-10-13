@@ -193,9 +193,10 @@ impl ActorSnapshot {
         let terrain_interlock =
             terrain_interlock::TerrainInterlock::attached(&spawn.kind, std::time::Instant::now());
         let position = spawn.position;
+        let pitch = movement_interpolation::signed_pitch(spawn.pitch);
         let pose = ActorPose {
             position,
-            pitch: spawn.pitch,
+            pitch,
             yaw: spawn.yaw,
             head_yaw: spawn.head_yaw,
         };
@@ -208,7 +209,7 @@ impl ActorSnapshot {
             kind: spawn.kind,
             position,
             velocity: spawn.velocity,
-            pitch: spawn.pitch,
+            pitch,
             yaw: spawn.yaw,
             head_yaw: spawn.head_yaw,
             previous_pose: pose,

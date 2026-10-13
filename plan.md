@@ -733,6 +733,9 @@ authored poses. Java 1.7 takes precedence for body, arm and item poses.
 First-person hand sway deliberately uses Java tick smoothing in both combat
 profiles, independently of the Java animation option.
 Movement bob uses the physics fraction; hurt and death use the actor fraction.
+Remote movement keeps pitch in the signed half-turn range before strike poses read it.
+Regression coverage samples repeated remote swings in Bedrock and Java modes with equivalent
+signed and wrapped pitch values; compilation and execution remain pending CI.
 Page-level body dye masks retain zero-alpha RGB and depth independently of armour cutout.
 
 Implementation and deterministic swing, sway, camera, overlay, equipment and shader fixtures

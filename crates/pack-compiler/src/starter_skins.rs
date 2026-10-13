@@ -12,8 +12,9 @@ use serde_json::{Map, Value};
 
 const MAX_TEXTURE_BYTES: u64 = 64 * 1024;
 const MAX_MODELS_BYTES: u64 = 4 * 1024 * 1024;
-const MODELS: &str = "models/mobs.json";
+const MODELS: &str = assets::LEGACY_ENTITY_GEOMETRY_PATH;
 const MAX_INHERITANCE_DEPTH: usize = 8;
+const SKIN_GEOMETRY_FORMAT_VERSION: &str = "1.21.0";
 
 fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
     let size = fs::metadata(path)
@@ -43,30 +44,18 @@ fn read_skin(path: &Path) -> Result<Box<[u8]>, String> {
     Ok(decoded.into_raw().into_boxed_slice())
 }
 
-/// The legacy model document reduced to the classic and slim skin models and their parents.
+/// Emits both selected skin models in one modern schema, with legacy inheritance resolved.
 fn skin_geometry(models: &Map<String, Value>) -> Result<String, String> {
-    let identifier = |key: &str| key.split_once(':').map_or(key, |(own, _)| own).to_owned();
-    let mut kept = Map::new();
-    for model in [CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY] {
-        let mut next = Some(model.to_owned());
-        let mut depth = 0;
-        while let Some(wanted) = next.take() {
-            depth += 1;
-            if depth > MAX_INHERITANCE_DEPTH {
-                return Err(format!("{model} inherits too deeply"));
-            }
-            let (key, value) = models
-                .iter()
-                .find(|(key, _)| identifier(key) == wanted)
-                .ok_or_else(|| format!("{MODELS} has no {wanted}"))?;
-            kept.insert(key.clone(), value.clone());
-            next = key.split_once(':').map(|(_, parent)| parent.to_owned());
-        }
-    }
-    if let Some(version) = models.get("format_version") {
-        kept.insert("format_version".to_owned(), version.clone());
-    }
-    let geometry = Value::Object(kept).to_string();
+    let entries = [CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY]
+        .map(|model| modern_skin_model(models, model))
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
+    let document = serde_json::json!({
+        "format_version": SKIN_GEOMETRY_FORMAT_VERSION,
+        "minecraft:geometry": entries,
+    });
+    crate::entity::validate_geometry_document(&document).map_err(|error| error.to_string())?;
+    let geometry = document.to_string();
     if geometry.len() > MAX_STARTER_SKIN_GEOMETRY_BYTES {
         return Err(format!(
             "skin geometry exceeds {MAX_STARTER_SKIN_GEOMETRY_BYTES} bytes"
@@ -82,11 +71,192 @@ fn skin_geometry(models: &Map<String, Value>) -> Result<String, String> {
     Ok(geometry)
 }
 
+/// Resolves a selected model's parents before moving legacy metadata into its description.
+fn modern_skin_model(models: &Map<String, Value>, model: &str) -> Result<Value, String> {
+    let mut chain = Vec::new();
+    let mut legacy = false;
+    let mut next = Some(model.to_owned());
+    while let Some(wanted) = next.take() {
+        if chain.len() >= MAX_INHERITANCE_DEPTH {
+            return Err(format!("{model} inherits too deeply"));
+        }
+        if let Some(entry) = models
+            .get("minecraft:geometry")
+            .and_then(Value::as_array)
+            .and_then(|entries| {
+                entries
+                    .iter()
+                    .find(|entry| entry["description"]["identifier"].as_str() == Some(&wanted))
+            })
+        {
+            chain.push(entry.clone());
+            break;
+        }
+        let (key, value) = models
+            .iter()
+            .find(|(key, _)| {
+                crate::geometry_key::legacy_key(key).is_some_and(|(own, _)| own == wanted)
+            })
+            .ok_or_else(|| format!("{MODELS} has no {wanted}"))?;
+        let mut description = value
+            .as_object()
+            .ok_or_else(|| format!("{wanted} is not a geometry object"))?
+            .clone();
+        legacy = true;
+        let mut entry = Map::new();
+        for field in ["bones", assets::entity::GEOMETRY_NO_HEAD_BOB_FIELD] {
+            if let Some(value) = description.remove(field) {
+                entry.insert(field.to_owned(), value);
+            }
+        }
+        for (legacy, modern) in [
+            ("texturewidth", "texture_width"),
+            ("textureheight", "texture_height"),
+        ] {
+            if let Some(value) = description.remove(legacy) {
+                description.insert(modern.to_owned(), value);
+            }
+        }
+        description.insert("identifier".to_owned(), wanted.into());
+        entry.insert("description".to_owned(), Value::Object(description));
+        chain.push(Value::Object(entry));
+        next =
+            crate::geometry_key::legacy_key(key).and_then(|(_, parent)| parent.map(str::to_owned));
+    }
+    let mut resolved = chain.pop().expect("the selected model has a definition");
+    while let Some(child) = chain.pop() {
+        overlay_skin_model(&mut resolved, child)?;
+    }
+    resolved["description"]["identifier"] = model.into();
+    if legacy && let Some(bones) = resolved["bones"].as_array_mut() {
+        for bone in bones.iter_mut().filter_map(Value::as_object_mut) {
+            bone.remove("reset");
+        }
+    }
+    Ok(resolved)
+}
+
+/// Flattens a legacy child without applying its cube defaults to inherited cubes.
+fn overlay_skin_model(base: &mut Value, mut child: Value) -> Result<(), String> {
+    let mut bones = base["bones"].as_array().cloned().unwrap_or_default();
+    let child_bones = child["bones"].as_array().cloned().unwrap_or_default();
+    for bone in bones.iter_mut() {
+        resolve_cube_defaults(bone);
+    }
+    for mut bone in child_bones {
+        resolve_cube_defaults(&mut bone);
+        let Some(inherited) = bones.iter_mut().find(|inherited| {
+            inherited["name"]
+                .as_str()
+                .zip(bone["name"].as_str())
+                .is_some_and(|(parent, child)| parent.eq_ignore_ascii_case(child))
+        }) else {
+            bones.push(bone);
+            continue;
+        };
+        let reset = bone["reset"].as_bool() == Some(true);
+        let mut cubes = if reset {
+            Vec::new()
+        } else {
+            inherited["cubes"].as_array().cloned().unwrap_or_default()
+        };
+        cubes.extend(bone["cubes"].as_array().into_iter().flatten().cloned());
+        let inherited = inherited
+            .as_object_mut()
+            .ok_or_else(|| "invalid inherited skin bone".to_owned())?;
+        // A redeclared bone defaults to visible, and reset also clears its mesh.
+        inherited.remove("neverRender");
+        if reset {
+            inherited.remove("poly_mesh");
+        }
+        let mut properties = bone
+            .as_object()
+            .ok_or_else(|| "invalid child skin bone".to_owned())?
+            .clone();
+        // The skin reader keeps the first declaration's name and bind pose.
+        properties.remove("name");
+        properties.remove("bind_pose_rotation");
+        inherited.extend(properties);
+        inherited.insert("cubes".to_owned(), Value::Array(cubes));
+    }
+    let description = base["description"]
+        .as_object_mut()
+        .ok_or_else(|| "invalid skin geometry description".to_owned())?;
+    let child_description = child["description"]
+        .as_object()
+        .ok_or_else(|| "invalid child skin geometry description".to_owned())?;
+    // Bounds are one authored box; a child with partial bounds uses the box defaults.
+    let bounds = [
+        "visible_bounds_width",
+        "visible_bounds_height",
+        "visible_bounds_offset",
+    ];
+    if bounds
+        .iter()
+        .any(|field| child_description.contains_key(*field))
+    {
+        for field in bounds {
+            description.remove(field);
+        }
+    }
+    description.extend(child_description.clone());
+    child
+        .as_object_mut()
+        .expect("model object")
+        .remove("description");
+    base.as_object_mut()
+        .expect("model object")
+        .extend(child.as_object().expect("model object").clone());
+    base["bones"] = Value::Array(bones);
+    Ok(())
+}
+
+/// Makes each cube's mirror and inflate independent of later bone overlays.
+fn resolve_cube_defaults(bone: &mut Value) {
+    let mirror = bone["mirror"].as_bool().unwrap_or(false);
+    let inflate = bone["inflate"].as_f64().unwrap_or(0.0);
+    if let Some(cubes) = bone["cubes"].as_array_mut() {
+        for cube in cubes {
+            if let Some(cube) = cube.as_object_mut() {
+                cube.entry("mirror").or_insert_with(|| mirror.into());
+                cube.entry("inflate").or_insert_with(|| inflate.into());
+            }
+        }
+    }
+}
+
+/// Uses the entity compiler's identifier selection, with standalone models above legacy models.
+fn pack_skin_geometry(pack: &Path) -> Result<String, String> {
+    let mut documents = Vec::new();
+    let legacy = pack.join(MODELS);
+    if legacy.is_file() {
+        documents.push((MODELS.into(), read_bounded(&legacy, MAX_MODELS_BYTES)?));
+    }
+    let mut paths = Vec::new();
+    crate::entity::collect::collect_optional_family(pack, "models/entity", &["json"], &mut paths)
+        .map_err(|error| error.to_string())?;
+    for (relative, path) in paths {
+        documents.push((relative, read_bounded(&path, MAX_MODELS_BYTES)?));
+    }
+    let mut models = Map::new();
+    let mut modern = Vec::new();
+    for (_, bytes) in crate::select_entity_geometry(documents) {
+        let mut document: Map<String, Value> =
+            pack_json::parse_jsonc(&bytes).map_err(|error| error.to_string())?;
+        if let Some(Value::Array(entries)) = document.remove("minecraft:geometry") {
+            modern.extend(entries);
+        } else {
+            models.extend(document);
+        }
+    }
+    if !modern.is_empty() {
+        models.insert("minecraft:geometry".to_owned(), Value::Array(modern));
+    }
+    skin_geometry(&models)
+}
+
 /// Reads the starter skins and humanoid skin models from `pack` and encodes the MCBESKN1 carrier.
 pub fn compile_starter_skins(pack: &Path) -> Result<Vec<u8>, String> {
-    let models: Map<String, Value> =
-        pack_json::parse_jsonc(&read_bounded(&pack.join(MODELS), MAX_MODELS_BYTES)?)
-            .map_err(|error| format!("{MODELS}: {error}"))?;
     let skins = STARTER_SKIN_SOURCES
         .iter()
         .map(|source| {
@@ -98,7 +268,7 @@ pub fn compile_starter_skins(pack: &Path) -> Result<Vec<u8>, String> {
         })
         .collect::<Result<_, String>>()?;
     let carrier = StarterSkins {
-        geometry: skin_geometry(&models)?.into(),
+        geometry: pack_skin_geometry(pack)?.into(),
         skins,
     };
     encode_starter_skins(&carrier).map_err(|error| error.to_string())
@@ -116,6 +286,7 @@ pub fn compile_starter_skins_to_file(pack: &Path, out: &Path) -> Result<(), Stri
 mod tests {
     use super::*;
 
+    /// Builds an original legacy fixture with one drawable body cube.
     fn cube_model() -> Value {
         serde_json::json!({
             "texturewidth": 64, "textureheight": 64,
@@ -124,8 +295,34 @@ mod tests {
         })
     }
 
+    /// Checks the serialized schema independently of the lenient skin geometry reader.
+    fn assert_modern_skin_schema(data: &str) -> Vec<Value> {
+        crate::entity::validate_geometry_document(&serde_json::from_str(data).unwrap()).unwrap();
+        let root: Map<String, Value> = serde_json::from_str(data).unwrap();
+        assert_eq!(root.len(), 2, "legacy models must not remain at the root");
+        assert_eq!(root["format_version"], SKIN_GEOMETRY_FORMAT_VERSION);
+        let entries = root["minecraft:geometry"].as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        for (entry, identifier) in entries
+            .iter()
+            .zip([CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY])
+        {
+            let description = entry["description"].as_object().unwrap();
+            assert_eq!(description["identifier"], identifier);
+            assert!(!description.contains_key("texturewidth"));
+            assert!(!description.contains_key("textureheight"));
+            for field in description.keys() {
+                assert!(
+                    entry.get(field).is_none(),
+                    "metadata belongs in the description"
+                );
+            }
+        }
+        entries.clone()
+    }
+
     #[test]
-    fn keeps_only_skin_models_and_their_parents() {
+    fn legacy_skin_models_resolve_their_parents_into_one_modern_schema() {
         let models = serde_json::json!({
             "format_version": "1.8.0",
             "geometry.humanoid": cube_model(),
@@ -134,18 +331,12 @@ mod tests {
             "geometry.zombie": cube_model(),
         });
         let geometry = skin_geometry(models.as_object().unwrap()).unwrap();
-        let kept: Map<String, Value> = serde_json::from_str(&geometry).unwrap();
-        let mut keys: Vec<_> = kept.keys().map(String::as_str).collect();
-        keys.sort_unstable();
-        assert_eq!(
-            keys,
-            [
-                "format_version",
-                "geometry.humanoid",
-                "geometry.humanoid.custom:geometry.humanoid",
-                "geometry.humanoid.customSlim",
-            ]
-        );
+        let entries = assert_modern_skin_schema(&geometry);
+        for entry in entries {
+            assert_eq!(entry["description"]["texture_width"], STARTER_SKIN_SIDE);
+            assert_eq!(entry["description"]["texture_height"], STARTER_SKIN_SIDE);
+            assert_eq!(entry["bones"][0]["cubes"].as_array().unwrap().len(), 1);
+        }
     }
 
     #[test]
@@ -155,6 +346,174 @@ mod tests {
             "geometry.humanoid.custom": cube_model(),
         });
         assert!(skin_geometry(models.as_object().unwrap()).is_err());
+    }
+
+    #[test]
+    fn inconsistent_schema_versions_fail_validation() {
+        let document = serde_json::json!({
+            "format_version":"1.8.0",
+            "minecraft:geometry":[{
+                "description":{"identifier":CLASSIC_SKIN_GEOMETRY},
+                "bones":cube_model()["bones"],
+            }],
+            SLIM_SKIN_GEOMETRY:cube_model(),
+        });
+        assert!(crate::entity::validate_geometry_document(&document).is_err());
+    }
+
+    #[test]
+    fn standalone_skin_geometry_overrides_the_legacy_inherited_model() {
+        let directory = tempfile::tempdir().unwrap();
+        let pack = directory.path();
+        fs::create_dir_all(pack.join("models/entity")).unwrap();
+        fs::create_dir_all(pack.join("textures/entity")).unwrap();
+        let legacy = serde_json::json!({
+            "format_version":"1.8.0",
+            "geometry.parent":cube_model(),
+            "geometry.humanoid.custom:geometry.parent":cube_model(),
+            "geometry.humanoid.customSlim":cube_model()
+        });
+        fs::write(pack.join(MODELS), serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let modern = serde_json::json!({
+            "format_version":"1.21.0",
+            "minecraft:geometry":[{
+                "description":{"identifier":CLASSIC_SKIN_GEOMETRY,"texture_width":64,"texture_height":64},
+                "bones":[{"name":"body","cubes":[{
+                    "origin":[-4,12,-2],"size":[8,12,4],"uv":[32,32],"inflate":0.25
+                }]}]
+            }]
+        });
+        fs::write(
+            pack.join("models/entity/fixture.json"),
+            serde_json::to_vec(&modern).unwrap(),
+        )
+        .unwrap();
+        for skin in STARTER_SKIN_SOURCES {
+            ::image::RgbaImage::from_pixel(64, 64, ::image::Rgba([33, 177, 91, 255]))
+                .save(pack.join(skin.texture))
+                .unwrap();
+        }
+        let carrier =
+            assets::starter_skins::decode_starter_skins(&compile_starter_skins(pack).unwrap())
+                .unwrap();
+        let entries = assert_modern_skin_schema(&carrier.geometry);
+        assert_eq!(entries[0], modern["minecraft:geometry"][0]);
+        assert_eq!(entries[1]["bones"], cube_model()["bones"]);
+        assert_eq!(
+            entries[1]["description"]["texture_width"],
+            STARTER_SKIN_SIDE
+        );
+        assert_eq!(
+            entries[1]["description"]["texture_height"],
+            STARTER_SKIN_SIDE
+        );
+        let patch = serde_json::json!({"geometry":{"default":CLASSIC_SKIN_GEOMETRY}}).to_string();
+        let model = parse_skin_geometry(&patch, &carrier.geometry)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            model.bones[0].cubes.len(),
+            1,
+            "the selected modern model has no inherited coplanar cube"
+        );
+        assert_eq!(model.bones[0].cubes[0].inflate.get(), 0.25);
+        assert_eq!(
+            model.bones[0].cubes[0].uv,
+            assets::EntityGeometryUv::Box([assets::EntityGeometryScalar::new(32.0).unwrap(); 2])
+        );
+        let patch = serde_json::json!({"geometry":{"default":SLIM_SKIN_GEOMETRY}}).to_string();
+        assert!(
+            parse_skin_geometry(&patch, &carrier.geometry)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn standalone_models_without_a_legacy_document_keep_a_supported_version() {
+        let directory = tempfile::tempdir().unwrap();
+        let pack = directory.path();
+        fs::create_dir_all(pack.join("models/entity")).unwrap();
+        let entries = [CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY].map(|identifier| {
+            serde_json::json!({
+                "description":{"identifier":identifier,"texture_width":64,"texture_height":64},
+                "bones":cube_model()["bones"],
+            })
+        });
+        let document = serde_json::json!({
+            "format_version":"1.21.0", "minecraft:geometry":entries,
+        });
+        fs::write(
+            pack.join("models/entity/fixture.json"),
+            serde_json::to_vec(&document).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            assert_modern_skin_schema(&pack_skin_geometry(pack).unwrap()),
+            document["minecraft:geometry"].as_array().unwrap().clone(),
+        );
+    }
+
+    #[test]
+    fn normalized_inheritance_preserves_cube_defaults_reset_and_metadata() {
+        let mut parent = cube_model();
+        parent["bones"][0]["mirror"] = true.into();
+        parent["bones"][0]["inflate"] = 0.5.into();
+        parent["visible_bounds_width"] = 3.into();
+        parent["visible_bounds_height"] = 4.into();
+        parent["visible_bounds_offset"] = serde_json::json!([0, 2, 0]);
+        let mut child = cube_model();
+        child["bones"][0]["name"] = "BODY".into();
+        child["bones"][0]["locators"] = serde_json::json!({"fixture":[1,2,3]});
+        child["visible_bounds_height"] = 2.into();
+        let mut reset = cube_model();
+        reset["bones"][0]["reset"] = true.into();
+        let models = serde_json::json!({
+            "format_version":"1.8.0",
+            "geometry.parent":parent,
+            "geometry.humanoid.custom:geometry.parent":child,
+            "geometry.humanoid.customSlim:geometry.humanoid.custom":reset,
+        });
+        let normalized = skin_geometry(models.as_object().unwrap()).unwrap();
+        let entries = assert_modern_skin_schema(&normalized);
+        assert_eq!(
+            entries[0]["bones"][0]["locators"],
+            child["bones"][0]["locators"]
+        );
+        for name in [CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY] {
+            let patch = serde_json::json!({"geometry":{"default":name}}).to_string();
+            let before = parse_skin_geometry(&patch, &models.to_string())
+                .unwrap()
+                .unwrap();
+            let after = parse_skin_geometry(&patch, &normalized).unwrap().unwrap();
+            assert_eq!(after.bones, before.bones);
+            assert_eq!(after.texture_width, before.texture_width);
+            assert_eq!(after.texture_height, before.texture_height);
+            assert_eq!(after.visible_bounds, before.visible_bounds);
+        }
+    }
+
+    #[test]
+    fn selected_skin_models_preserve_authored_coincident_cubes() {
+        let mut model = cube_model();
+        let mut second = model["bones"][0]["cubes"][0].clone();
+        second["uv"] = serde_json::json!([32, 32]);
+        model["bones"][0]["cubes"]
+            .as_array_mut()
+            .unwrap()
+            .push(second);
+        let models = Map::from_iter([
+            (CLASSIC_SKIN_GEOMETRY.to_owned(), model),
+            (SLIM_SKIN_GEOMETRY.to_owned(), cube_model()),
+        ]);
+        let data = skin_geometry(&models).unwrap();
+        let patch = serde_json::json!({"geometry":{"default":CLASSIC_SKIN_GEOMETRY}}).to_string();
+        let geometry = parse_skin_geometry(&patch, &data).unwrap().unwrap();
+        let cubes = &geometry.bones[0].cubes;
+        assert_eq!(cubes.len(), 2);
+        assert_eq!(cubes[0].origin, cubes[1].origin);
+        assert_eq!(cubes[0].size, cubes[1].size);
+        assert_ne!(cubes[0].uv, cubes[1].uv);
     }
 
     #[test]
@@ -172,5 +531,6 @@ mod tests {
             assets::starter_skins::decode_starter_skins(&compile_starter_skins(&pack).unwrap())
                 .unwrap();
         assert_eq!(decoded.skins.len(), STARTER_SKIN_SOURCES.len());
+        assert_modern_skin_schema(&decoded.geometry);
     }
 }

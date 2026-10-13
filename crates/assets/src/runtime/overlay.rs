@@ -19,6 +19,8 @@ pub struct MaterialOverride {
     pub texture: TextureRef,
     /// Overlay-local animation index, or `NO_ANIMATION`.
     pub animation: u32,
+    /// Overlay-local positional range; `None` preserves the base selector and weight.
+    pub variation: Option<(u32, u32)>,
 }
 
 /// Server block visuals whose indices are local to the overlay: face and quad
@@ -46,6 +48,8 @@ pub struct BlockOverlay {
     /// Canonical network hashes parallel to `visuals`; incomplete state identities are absent.
     pub hashes: Vec<Option<u32>>,
     pub material_overrides: Vec<MaterialOverride>,
+    /// Base visual faces rebound to overlay-local materials; absent faces retain their base.
+    pub face_overrides: Vec<(u32, [Option<u32>; 6])>,
     /// Optional pack-defined tint maps and biome appearance rules.
     pub biomes: Option<crate::CompiledBiomeAssets>,
 }
@@ -180,8 +184,27 @@ impl RuntimeAssets {
                     "overlay material override is outside the base table",
                 ));
             }
+            if let Some((start, count)) = replacement.variation {
+                let end = (start as usize)
+                    .checked_add(count as usize)
+                    .ok_or_else(|| invalid("overlay variation range overflows"))?;
+                if (count == 0 && start != 0) || end > overlay.materials.len() {
+                    return Err(invalid(
+                        "overlay variation range is outside its material table",
+                    ));
+                }
+            }
             materials[replacement.material as usize] = Material {
                 texture: page_ref(replacement.texture)?,
+                variation_start: match replacement.variation {
+                    Some((_, 0)) => 0,
+                    Some((start, _)) => material_base + start,
+                    None => materials[replacement.material as usize].variation_start,
+                },
+                variation_count: replacement.variation.map_or(
+                    materials[replacement.material as usize].variation_count,
+                    |(_, count)| count,
+                ),
                 animation: optional(
                     replacement.animation,
                     overlay.animations.len(),
@@ -191,6 +214,7 @@ impl RuntimeAssets {
                 ..materials[replacement.material as usize]
             };
         }
+        crate::material_variations::validate(&materials)?;
         let mut animation_frames = self.animation_frames.to_vec();
         for &frame in &overlay.animation_frames {
             animation_frames.push(page_ref(frame)?);
@@ -310,6 +334,12 @@ impl RuntimeAssets {
             previous_carried = Some(index);
         }
         let mut visuals = self.visuals.to_vec();
+        super::face_overrides::apply(
+            &overlay.face_overrides,
+            &mut visuals,
+            &materials,
+            material_base..material_base + overlay.materials.len() as u32,
+        )?;
         for visual in &overlay.visuals {
             if overlay
                 .model_templates
@@ -539,12 +569,66 @@ mod tests {
             material: 0,
             texture: TextureRef::new(1, 0).unwrap(),
             animation: NO_ANIMATION,
+            variation: Some((0, 0)),
         }];
         assert!(base.with_block_overlay(1, &overlay).is_err());
     }
 
     #[test]
-    fn weighted_replacement_updates_inventory_pixels_and_keeps_the_variation_range() {
+    fn raster_only_leaf_replacement_preserves_the_base_weighted_selector() {
+        let mut base = RuntimeAssets::diagnostic();
+        base.materials = vec![
+            Material::unvaried(),
+            Material {
+                variation_start: 2,
+                variation_count: 2,
+                ..Material::unvaried()
+            },
+            Material {
+                variation_weight: 0.25_f32.to_bits(),
+                ..Material::unvaried()
+            },
+            Material {
+                variation_weight: 0.75_f32.to_bits(),
+                ..Material::unvaried()
+            },
+        ]
+        .into();
+        let mut overlay = cube_overlay(page(16));
+        overlay.material_overrides.push(MaterialOverride {
+            material: 3,
+            texture: TextureRef::new(1, 0).unwrap(),
+            animation: NO_ANIMATION,
+            variation: None,
+        });
+        let runtime = base.with_block_overlay(1, &overlay).unwrap();
+        assert_eq!(runtime.material(1), base.material(1));
+        assert_eq!(
+            runtime.material(3).variation_weight,
+            base.material(3).variation_weight
+        );
+        assert_eq!(runtime.material(3).texture.page(), 1);
+        assert_eq!(base.material(3).texture.page(), 0);
+    }
+
+    #[test]
+    fn weighted_override_ranges_are_checked_before_offsetting() {
+        let mut base = RuntimeAssets::diagnostic();
+        base.materials = vec![Material::unvaried(); 2].into();
+        let mut overlay = cube_overlay(page(16));
+        for variation in [Some((u32::MAX, 2)), Some((1, 0)), Some((1, 2))] {
+            overlay.material_overrides = vec![MaterialOverride {
+                material: 1,
+                texture: TextureRef::new(1, 0).unwrap(),
+                animation: NO_ANIMATION,
+                variation,
+            }];
+            assert!(base.with_block_overlay(1, &overlay).is_err());
+        }
+    }
+
+    #[test]
+    fn replacing_a_selector_uses_the_server_texture_without_changing_leaf_weights() {
         let mut base = RuntimeAssets::diagnostic();
         base.materials = vec![
             Material::unvaried(),
@@ -570,6 +654,7 @@ mod tests {
             material: 1,
             texture: TextureRef::new(1, 0).unwrap(),
             animation: NO_ANIMATION,
+            variation: None,
         }];
         let session = base.with_block_overlay(1, &overlay).unwrap();
         assert_eq!(session.materials[1].variation_start, 2);
@@ -593,6 +678,10 @@ mod tests {
                 .all(|pixel| *pixel == [255; 4])
         );
         assert_ne!(replacement, original);
+        overlay.material_overrides[0].variation = Some((0, 0));
+        let cleared = base.with_block_overlay(1, &overlay).unwrap();
+        assert_eq!(cleared.materials[1].variation_count, 0);
+        assert_eq!(cleared.materials[2].variation_weight, 1.0_f32.to_bits());
     }
 
     // A 32px page is accepted; malformed mips or dangling ids are refused whole.

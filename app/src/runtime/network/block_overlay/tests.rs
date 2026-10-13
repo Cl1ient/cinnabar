@@ -14,7 +14,7 @@ fn compile_block_overlay(
     view: &LayeredPackView,
     blocks: &CustomBlocks,
     hashed: bool,
-    keys: Option<&assets::MaterialKeys>,
+    keys: Option<&assets::material_keys::MaterialKeys>,
 ) -> Option<super::CompiledBlockOverlay> {
     super::compile_block_overlay(
         view,
@@ -22,6 +22,7 @@ fn compile_block_overlay(
         hashed,
         keys,
         assets::MAX_TEXTURE_LAYERS as u32,
+        None,
     )
 }
 
@@ -35,6 +36,7 @@ mod lighting;
 mod random_offset;
 mod session;
 mod texture_budget;
+mod vanilla_terrain;
 
 mod vines;
 
@@ -122,18 +124,18 @@ fn terrain_replacement_applies_literal_atlas_tint_once_and_keeps_alpha() {
         r##"{"texture_data":{"lucky":{"textures":[{"path":"textures/blocks/lucky","tint_color":"#ff80ff"}]}}}"##,
     );
     let catalog = super::textures::TextureCatalog::new(&view, None);
-    let image = catalog.decode("lucky").unwrap();
+    let image = catalog.decode_choice("lucky", 0, 0).unwrap();
     assert_eq!(&image.rgba8[..4], &[0, 100, 0, 255]);
 }
 
 #[test]
 fn raster_only_replacement_retains_the_base_lily_tint() {
     let view = view_with_catalog(GEOMETRY.as_bytes(), r#"{"texture_data":{}}"#);
-    let keys = assets::MaterialKeys::from_entries([(1, "pad")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "pad")])
         .with_aliases([("pad", "textures/blocks/lucky")])
         .with_fixed_tints([("pad", [32, 128, 48])]);
     let catalog = super::textures::TextureCatalog::new(&view, Some(&keys));
-    let image = catalog.decode("pad").unwrap();
+    let image = catalog.decode_choice("pad", 0, 0).unwrap();
     assert_eq!(&image.rgba8[..4], &[0, 100, 0, 255]);
     let compiled =
         compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys)).unwrap();
@@ -760,7 +762,11 @@ fn hashed_mode_emits_a_visual_and_hash_per_state() {
 // A pack redefining a vanilla terrain key repoints that key's base materials; unknown keys are ignored.
 #[test]
 fn vanilla_terrain_keys_override_base_materials() {
-    let keys = assets::MaterialKeys::from_entries([(5, "lucky"), (6, "gen"), (7, "not_in_pack")]);
+    let keys = assets::material_keys::MaterialKeys::from_entries([
+        (5, "lucky"),
+        (6, "gen"),
+        (7, "not_in_pack"),
+    ]);
     let empty = CustomBlocks::default();
     let compiled = compile_block_overlay(&view(), &empty, false, Some(&keys)).expect("overrides");
     let mut materials = compiled

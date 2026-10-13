@@ -8,7 +8,7 @@ pub const MAX_FLIPBOOK_FRAMES: usize = 4_096;
 pub const DEFAULT_BLEND_FRAMES: bool = true;
 
 /// An animation source and the atlas destination it updates.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct FlipbookSource {
     #[serde(rename = "flipbook_texture")]
     pub texture_path: Box<str>,

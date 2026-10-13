@@ -31,7 +31,10 @@ fn view(files: &[(&str, &[u8])]) -> LayeredPackView {
 }
 
 /// Starts with enough occupied layers to reject a 2048px page while small images still fit.
-fn builder<'a>(view: &'a LayeredPackView, keys: &assets::MaterialKeys) -> Builder<'a> {
+fn builder<'a>(
+    view: &'a LayeredPackView,
+    keys: &assets::material_keys::MaterialKeys,
+) -> Builder<'a> {
     Builder {
         catalog: TextureCatalog::new(view, Some(keys)),
         geometries: Default::default(),
@@ -41,8 +44,10 @@ fn builder<'a>(view: &'a LayeredPackView, keys: &assets::MaterialKeys) -> Builde
         tile_size: MIN_TILE,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
-        textures: Default::default(),
-        frame_storage: Default::default(),
+        slots: Default::default(),
+        base_assets: None,
+        terrain_materials: Default::default(),
+        vanilla_carried: Vec::new(),
         materials: Default::default(),
         visuals: Default::default(),
         gaps: Default::default(),
@@ -66,13 +71,17 @@ fn static_decode_and_budget_failures_are_shared_across_selectors_and_aliases() {
             ("textures/rejected.png", rejected),
             ("textures/small.png", &small),
         ]);
-        let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "alias"), (3, "small")])
-            .with_aliases([
-                ("tile", "textures/rejected"),
-                ("alias", " ./textures/rejected "),
-                ("small", "textures/small"),
-            ])
-            .with_flipbook_destinations([("tile", vec![1; 16]), ("alias", vec![1; 16])]);
+        let keys = assets::material_keys::MaterialKeys::from_entries([
+            (1, "tile"),
+            (2, "alias"),
+            (3, "small"),
+        ])
+        .with_aliases([
+            ("tile", "textures/rejected"),
+            ("alias", " ./textures/rejected "),
+            ("small", "textures/small"),
+        ])
+        .with_flipbook_destinations([("tile", vec![1; 16]), ("alias", vec![1; 16])]);
         let mut builder = builder(&view, &keys);
         for index in 0..16 {
             assert!(builder.texture_slot_for("tile", (index, 0)).is_none());
@@ -100,7 +109,7 @@ fn failed_static_storage_does_not_hide_an_independent_animation() {
         }]"#,
         ),
     ]);
-    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/rejected")])
         .with_flipbook_destinations([("tile", vec![1; 2])]);
     let mut builder = builder(&view, &keys);
@@ -128,7 +137,7 @@ fn failed_grid_admission_does_not_poison_another_grid_of_the_same_image() {
         }}"#,
         ),
     ]);
-    let keys = assets::MaterialKeys::from_entries([(1, "invalid"), (2, "valid")]);
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "invalid"), (2, "valid")]);
     let mut builder = builder(&view, &keys);
     assert!(builder.texture_slot_for("invalid", (0, 0)).is_none());
     assert!(builder.texture_slot_for("valid", (0, 0)).is_some());
@@ -154,7 +163,7 @@ fn animation_source_failures_decode_once_across_wildcard_variants() {
                 br#"[{"atlas_tile":"tile","flipbook_texture":"textures/rejected"}]"#,
             ),
         ]);
-        let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+        let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
             .with_aliases([("tile", "textures/fallback")])
             .with_flipbook_destinations([("tile", vec![16])]);
         let mut builder = builder(&view, &keys);
@@ -182,7 +191,7 @@ fn destination_timing_failure_does_not_poison_shared_animation_storage() {
         ("textures/fallback.png", &fallback),
         ("textures/flipbook_textures.json", &description),
     ]);
-    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/fallback")])
         .with_flipbook_destinations([("tile", vec![3])]);
     let mut builder = builder(&view, &keys);
@@ -210,7 +219,7 @@ fn identical_pixels_at_distinct_source_frames_share_a_physical_layer() {
             br#"[{"atlas_tile":"tile","flipbook_texture":"textures/strip","frames":[1,0,1]}]"#,
         ),
     ]);
-    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/strip")]);
     let mut builder = builder(&view, &keys);
     builder.sources.truncate(1);
@@ -226,4 +235,35 @@ fn identical_pixels_at_distinct_source_frames_share_a_physical_layer() {
             .iter()
             .all(|&frame| frame.layer() == slot.layer)
     );
+}
+
+#[test]
+fn resolved_animation_aliases_reuse_frames_at_capacity_with_independent_timing() {
+    let strip = png(16, 32);
+    let view = view(&[
+        ("textures/strip.png", &strip),
+        ("textures/flipbook_textures.json", br#"[
+            {"atlas_tile":"tile","atlas_index":0,"flipbook_texture":"textures/strip","ticks_per_frame":3},
+            {"atlas_tile":"tile","atlas_index":1,"flipbook_texture":"textures/strip.png","ticks_per_frame":7}
+        ]"#),
+    ]);
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbook_destinations([("tile", [1, 1])]);
+    let mut builder = builder(&view, &keys);
+    builder.sources.truncate(1);
+    builder.max_layers = 2;
+    let first = builder.texture_slot_for("tile", (0, 0)).unwrap();
+    let second = builder.texture_slot_for("tile", (1, 0)).unwrap();
+    assert_eq!(builder.sources.len(), 2);
+    assert_eq!(builder.catalog.decode_attempts.get(), 1);
+    assert_eq!(first.layer, second.layer);
+    assert_ne!(first.animation, second.animation);
+    assert_eq!(builder.overlay.animation_frames.len(), 2);
+    for (slot, selector, ticks) in [(first, 0, 3), (second, 1, 7)] {
+        let animation = &builder.overlay.animations[slot.animation as usize];
+        assert_eq!(animation.atlas_index, selector);
+        assert_eq!(animation.ticks_per_frame, ticks);
+        assert_eq!(animation.frame_count, 2);
+    }
 }

@@ -1,5 +1,5 @@
 use super::*;
-use assets::MaterialKeys;
+use assets::material_keys::MaterialKeys;
 
 #[test]
 fn layers_merge_fields_by_full_selector_and_keep_other_animations() {

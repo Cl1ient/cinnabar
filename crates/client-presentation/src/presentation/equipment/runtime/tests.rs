@@ -473,7 +473,7 @@ fn session_block_sheets_preserve_material_alpha_modes_for_both_hands() {
         let staged = StagedSessionIcons::stage(Some(&items)).unwrap();
         let (_, locations) = ActorArtworkPages::default().with_equipment_rasters(staged.rasters());
         runtime.set_session_items(Some(&items), Some(staged), locations);
-        for kind in [HeldKind::Other, HeldKind::Sprite] {
+        for kind in [HeldKind::Other, HeldKind::Sprite, HeldKind::Block(7)] {
             item.kind = kind;
             let main = runtime
                 .first_person_item(&body, &item, ItemAnimationState::default())

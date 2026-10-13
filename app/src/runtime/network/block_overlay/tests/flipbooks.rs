@@ -1,6 +1,17 @@
 use super::*;
 use assets::texture::flipbook::FlipbookSource;
 
+/// Compiles an overlay without a carrier donor and with an explicit physical layer limit.
+fn compile_with_limit(
+    view: &LayeredPackView,
+    blocks: &CustomBlocks,
+    hashed: bool,
+    keys: Option<&assets::material_keys::MaterialKeys>,
+    layers: u32,
+) -> Option<super::super::CompiledBlockOverlay> {
+    super::super::compile_block_overlay(view, blocks, hashed, keys, layers, None)
+}
+
 /// Admits a pack containing only the synthetic files named by the test.
 fn pack(files: &[(&str, &[u8])]) -> LayeredPackView {
     let id = "00000000-0000-0000-0000-000000000019";
@@ -87,7 +98,7 @@ fn raster_only_pack_replaces_all_base_frames_and_removal_restores_the_carrier() 
         "frames":[1,0,1], "ticks_per_frame":7, "blend_frames":false
     }))
     .unwrap();
-    let keys = assets::MaterialKeys::from_entries([(1, "water")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "water")])
         .with_aliases([("water", "textures/water")])
         .with_flipbooks(&[source]);
     let strip = png(16, 32, |_, y| {
@@ -144,12 +155,14 @@ fn raster_only_pack_replaces_all_base_frames_and_removal_restores_the_carrier() 
 
 #[test]
 fn sixteen_static_atlas_indices_share_one_layer_at_the_device_limit() {
-    let keys = assets::MaterialKeys::from_entries((1..=16).map(|material| (material, "mushroom")))
-        .with_aliases([("mushroom", "textures/static")])
-        .with_flipbook_selectors((0..16).map(|index| (index + 1, (index, 0))))
-        .with_flipbook_destinations([("mushroom", [1; 16])]);
+    let keys = assets::material_keys::MaterialKeys::from_entries(
+        (1..=16).map(|material| (material, "mushroom")),
+    )
+    .with_aliases([("mushroom", "textures/static")])
+    .with_flipbook_selectors((0..16).map(|index| (index + 1, (index, 0))))
+    .with_flipbook_destinations([("mushroom", [1; 16])]);
     let raster = png(16, 16, |_, _| [180, 90, 30, 255]);
-    let compiled = super::super::compile_block_overlay(
+    let compiled = compile_with_limit(
         &pack(&[("textures/static.png", &raster)]),
         &CustomBlocks::default(),
         false,
@@ -185,11 +198,13 @@ fn missing_flipbook_rasters_reuse_static_fallback_for_every_selector_at_capacity
             .unwrap()
         })
         .collect::<Vec<_>>();
-    let keys = assets::MaterialKeys::from_entries((1..=3).map(|material| (material, "tile")))
-        .with_aliases([("tile", "textures/static")])
-        .with_flipbooks(&sources)
-        .with_flipbook_selectors((0..3).map(|index| (index + 1, (index, 0))))
-        .with_flipbook_destinations([("tile", [1; 3])]);
+    let keys = assets::material_keys::MaterialKeys::from_entries(
+        (1..=3).map(|material| (material, "tile")),
+    )
+    .with_aliases([("tile", "textures/static")])
+    .with_flipbooks(&sources)
+    .with_flipbook_selectors((0..3).map(|index| (index + 1, (index, 0))))
+    .with_flipbook_destinations([("tile", [1; 3])]);
     let raster = png(16, 16, |_, _| [180, 90, 30, 255]);
     let view = pack(&[("textures/static.png", &raster)]);
     let catalog = super::super::textures::TextureCatalog::new(&view, Some(&keys));
@@ -197,8 +212,7 @@ fn missing_flipbook_rasters_reuse_static_fallback_for_every_selector_at_capacity
         assert!(catalog.flipbook("tile", (index, 0)).is_some());
     }
     let compiled =
-        super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 2)
-            .unwrap();
+        compile_with_limit(&view, &CustomBlocks::default(), false, Some(&keys), 2).unwrap();
     assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
     assert_eq!(compiled.gaps.saturated_textures, 0);
     assert!(compiled.overlay.animations.is_empty());
@@ -214,7 +228,7 @@ fn missing_flipbook_rasters_reuse_static_fallback_for_every_selector_at_capacity
 
 #[test]
 fn independent_sources_and_full_selectors_keep_distinct_replicated_frames() {
-    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
         .with_aliases([("tile", "textures/static")])
         .with_flipbook_selectors([(1, (1, 0)), (2, (1, 1))])
         .with_flipbook_destinations([("tile", [1, 2])]);
@@ -297,7 +311,7 @@ fn omitted_variant_reaches_every_destination_without_crossing_atlas_indices() {
         {"atlas_tile":"tile","atlas_index":1,"flipbook_texture":"textures/strip"}
     ]"#,
     )]);
-    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/static")])
         .with_flipbook_destinations([("tile", [1, 3])]);
     let catalog = super::super::textures::TextureCatalog::new(&view, Some(&keys));
@@ -327,7 +341,7 @@ fn explicit_frames_clamp_to_the_last_physical_frame_before_replication() {
 
 #[test]
 fn invalid_uv_variants_fall_back_in_creation_order_and_invalid_indices_skip() {
-    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/static")])
         .with_flipbook_destinations([("tile", [2])]);
     let view = pack(&[(
@@ -362,10 +376,11 @@ fn invalid_uv_variants_fall_back_in_creation_order_and_invalid_indices_skip() {
 
 #[test]
 fn scalar_terrain_replacement_remaps_indexed_materials_to_the_valid_animation() {
-    let keys = assets::MaterialKeys::from_entries([(1, "barrel_top"), (2, "barrel_top")])
-        .with_aliases([("barrel_top", "textures/base")])
-        .with_flipbook_selectors([(1, (0, 0)), (2, (1, 1))])
-        .with_flipbook_destinations([("barrel_top", [2, 2])]);
+    let keys =
+        assets::material_keys::MaterialKeys::from_entries([(1, "barrel_top"), (2, "barrel_top")])
+            .with_aliases([("barrel_top", "textures/base")])
+            .with_flipbook_selectors([(1, (0, 0)), (2, (1, 1))])
+            .with_flipbook_destinations([("barrel_top", [2, 2])]);
     let strip = png(16, 32, |_, y| {
         if y < 16 {
             [230, 10, 20, 255]
@@ -404,10 +419,11 @@ fn scalar_terrain_replacement_remaps_indexed_materials_to_the_valid_animation() 
 
 #[test]
 fn matching_animation_frames_share_storage_at_capacity_with_separate_destination_metadata() {
-    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile"), (3, "alias")])
-        .with_aliases([("tile", "textures/static"), ("alias", "textures/static")])
-        .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1)), (3, (1, 0))])
-        .with_flipbook_destinations([("tile", vec![2]), ("alias", vec![1, 1])]);
+    let keys =
+        assets::material_keys::MaterialKeys::from_entries([(1, "tile"), (2, "tile"), (3, "alias")])
+            .with_aliases([("tile", "textures/static"), ("alias", "textures/static")])
+            .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1)), (3, (1, 0))])
+            .with_flipbook_destinations([("tile", vec![2]), ("alias", vec![1, 1])]);
     let strip = png(16, 32, |_, y| {
         if y < 16 {
             [230, 10, 20, 255]
@@ -423,8 +439,7 @@ fn matching_animation_frames_share_storage_at_capacity_with_separate_destination
         ]"#),
     ]);
     let compiled =
-        super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 3)
-            .unwrap();
+        compile_with_limit(&view, &CustomBlocks::default(), false, Some(&keys), 3).unwrap();
     assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
     assert_eq!(compiled.gaps.saturated_textures, 0);
     assert_eq!(compiled.overlay.material_overrides.len(), 3);
@@ -465,7 +480,7 @@ fn matching_animation_frames_share_storage_at_capacity_with_separate_destination
 
 #[test]
 fn relative_flipbook_paths_keep_animation_and_share_canonical_storage() {
-    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
         .with_aliases([("tile", "textures/static")])
         .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
         .with_flipbook_destinations([("tile", [2])]);
@@ -486,8 +501,7 @@ fn relative_flipbook_paths_keep_animation_and_share_canonical_storage() {
         ]"#),
     ]);
     let compiled =
-        super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 3)
-            .unwrap();
+        compile_with_limit(&view, &CustomBlocks::default(), false, Some(&keys), 3).unwrap();
     assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
     assert_eq!(compiled.overlay.texture.as_ref().unwrap().mips[0].size, 256);
     assert_eq!(compiled.gaps.saturated_textures, 0);
@@ -520,7 +534,7 @@ fn relative_flipbook_paths_keep_animation_and_share_canonical_storage() {
 
 #[test]
 fn full_arrays_reuse_shared_frames_without_reading_uncached_image_payloads() {
-    let keys = assets::MaterialKeys::from_entries([
+    let keys = assets::material_keys::MaterialKeys::from_entries([
         (1, "a_fill"),
         (2, "a_fill"),
         (3, "z_static"),
@@ -560,8 +574,7 @@ fn full_arrays_reuse_shared_frames_without_reading_uncached_image_payloads() {
     ]);
     let view = LayeredPackView::tracked(stack.shared_stack());
     let compiled =
-        super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 3)
-            .unwrap();
+        compile_with_limit(&view, &CustomBlocks::default(), false, Some(&keys), 3).unwrap();
     assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
     assert_eq!(compiled.gaps.saturated_textures, 2);
     assert_eq!(compiled.overlay.material_overrides.len(), 2);
@@ -586,7 +599,7 @@ fn full_arrays_reuse_shared_frames_without_reading_uncached_image_payloads() {
 
 #[test]
 fn animation_failures_keep_static_visuals_and_cached_overrides() {
-    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
         .with_aliases([("tile", "textures/static")])
         .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
         .with_flipbook_destinations([("tile", [2])]);
@@ -615,7 +628,7 @@ fn animation_failures_keep_static_visuals_and_cached_overrides() {
         .unwrap();
         // Keep both source frames available when checking timeline overflow.
         let layers = if ticks == u32::MAX { 4 } else { 2 };
-        let compiled = super::super::compile_block_overlay(
+        let compiled = compile_with_limit(
             &pack(&[
                 ("textures/static.png", &raster),
                 ("textures/invalid.png", &invalid),
@@ -647,7 +660,7 @@ fn animation_failures_keep_static_visuals_and_cached_overrides() {
 
 #[test]
 fn wide_horizontal_strips_keep_every_frame_and_share_them_across_selectors() {
-    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
         .with_aliases([("tile", "textures/static")])
         .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
         .with_flipbook_destinations([("tile", [2])]);
@@ -655,7 +668,7 @@ fn wide_horizontal_strips_keep_every_frame_and_share_them_across_selectors() {
         [(x / 64) as u8, (x % 64) as u8, y as u8, 255]
     });
     let raster = png(16, 16, |_, _| [0, 180, 0, 255]);
-    let compiled = super::super::compile_block_overlay(
+    let compiled = compile_with_limit(
         &pack(&[("textures/static.png", &raster), ("textures/horizontal.png", &strip),
             ("textures/flipbook_textures.json", br#"[{"atlas_tile":"tile","flipbook_texture":"textures/horizontal","ticks_per_frame":7}]"#)]),
         &CustomBlocks::default(), false, Some(&keys), 129,
@@ -683,7 +696,7 @@ fn wide_horizontal_strips_keep_every_frame_and_share_them_across_selectors() {
 
 #[test]
 fn a_later_all_variant_description_overwrites_an_earlier_exact_destination() {
-    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/static")])
         .with_flipbook_destinations([("tile", [2])]);
     let view = pack(&[(
@@ -713,7 +726,7 @@ fn raster_only_replacements_normalize_nonzero_carrier_selectors() {
             "frames":[1,0], "ticks_per_frame":9, "blend_frames":false
         }))
         .unwrap();
-        let keys = assets::MaterialKeys::from_entries([(1, "top")])
+        let keys = assets::material_keys::MaterialKeys::from_entries([(1, "top")])
             .with_aliases([("top", "textures/charged")])
             .with_flipbooks(&[source])
             .with_flipbook_selectors([(1, (index, index))])
@@ -759,7 +772,7 @@ fn variant_zero_override_keeps_the_other_variants_base_animation() {
         "frames":[1,0], "ticks_per_frame":7, "blend_frames":false
     }))
     .unwrap();
-    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
         .with_aliases([("tile", "textures/base")])
         .with_flipbooks(&[source])
         .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
@@ -809,7 +822,7 @@ fn variant_zero_override_keeps_the_other_variants_base_animation() {
 
 #[test]
 fn horizontal_strip_replacement_retains_both_frames_in_timeline_order() {
-    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/strip")]);
     let strip = png(32, 16, |x, _| {
         if x < 16 {
@@ -857,11 +870,12 @@ fn repeated_square_frames_leave_capacity_for_another_texture() {
         vec![0, 0],
         vec![0; assets::texture::flipbook::MAX_FLIPBOOK_FRAMES],
     ] {
-        let keys = assets::MaterialKeys::from_entries([(1, "a_square"), (2, "b_other")])
-            .with_aliases([
-                ("a_square", "textures/square"),
-                ("b_other", "textures/other"),
-            ]);
+        let keys =
+            assets::material_keys::MaterialKeys::from_entries([(1, "a_square"), (2, "b_other")])
+                .with_aliases([
+                    ("a_square", "textures/square"),
+                    ("b_other", "textures/other"),
+                ]);
         let square = png(16, 16, |_, _| [200, 10, 20, 255]);
         let other = png(16, 16, |_, _| [10, 200, 20, 255]);
         let description = serde_json::to_vec(&serde_json::json!([{
@@ -872,14 +886,8 @@ fn repeated_square_frames_leave_capacity_for_another_texture() {
             ("textures/other.png", &other),
             ("textures/flipbook_textures.json", &description),
         ]);
-        let compiled = super::super::compile_block_overlay(
-            &view,
-            &CustomBlocks::default(),
-            false,
-            Some(&keys),
-            3,
-        )
-        .unwrap();
+        let compiled =
+            compile_with_limit(&view, &CustomBlocks::default(), false, Some(&keys), 3).unwrap();
         assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
         assert_eq!(compiled.overlay.material_overrides.len(), 2);
         let square = compiled

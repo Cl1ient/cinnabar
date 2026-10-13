@@ -19,7 +19,7 @@ pub(super) fn collect_family(
     collect_directory(root, &absolute_root, allowed_extensions, output, 0, true)
 }
 
-pub(super) fn collect_optional_family(
+pub(crate) fn collect_optional_family(
     root: &Path,
     relative_root: &str,
     allowed_extensions: &[&str],

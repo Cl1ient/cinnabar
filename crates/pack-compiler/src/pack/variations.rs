@@ -55,12 +55,15 @@ pub(super) fn extract(value: &mut Value) -> Result<Vec<WeightedPath>, AssetError
         };
         paths.push(WeightedPath {
             path: path.into(),
-            weight: weight.clamp(0.05, 1_000_000.0),
+            weight,
         });
     }
-    let total: f32 = paths.iter().map(|entry| entry.weight).sum();
-    for entry in &mut paths {
-        entry.weight /= total;
+    let mut weights = paths.iter().map(|entry| entry.weight).collect::<Vec<_>>();
+    if !assets::material_keys::normalize_terrain_weights(&mut weights) {
+        return Err(invalid("terrain choice weights are invalid"));
+    }
+    for (entry, weight) in paths.iter_mut().zip(weights) {
+        entry.weight = weight;
     }
     *value = Value::String(paths[0].path.to_string());
     Ok(paths)

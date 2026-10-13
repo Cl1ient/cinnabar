@@ -71,7 +71,7 @@ pub struct LoadedAssets {
     pub entities: LoadedEntityAssets,
     pub fonts: LoadedFontAssets,
     pub metrics: CarrierMetrics,
-    pub material_keys: Option<crate::MaterialKeys>,
+    pub material_keys: Option<crate::material_keys::MaterialKeys>,
     pub vanilla_entity_refs: Option<crate::VanillaEntityRefs>,
     pub selected_path: PathBuf,
     pub kind: LoadedAssetKind,

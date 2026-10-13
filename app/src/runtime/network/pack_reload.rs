@@ -245,6 +245,7 @@ impl PackReload {
                                 Arc::new(super::block_overlay::CompiledBlockOverlay {
                                     overlay: Default::default(),
                                     gaps: Default::default(),
+                                    vanilla_carried: Vec::new(),
                                 })
                             });
                             Arc::make_mut(overlay).overlay.biomes = biome_overlay.biomes;

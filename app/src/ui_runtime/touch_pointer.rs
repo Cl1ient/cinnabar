@@ -1,5 +1,5 @@
 //! One finger drives the mouse pointer while a screen with no touch path of its own owns input:
-//! the inventory, a server form or the bed screen.
+//! the inventory, a server form, the sign editor or the bed screen.
 //!
 //! Those screens already read the cursor and left button, so a touchscreen needs no screen
 //! changes. Menus read touches themselves and gameplay maps them to touch controls.
@@ -68,7 +68,7 @@ impl TouchPointer {
 /// above a visible menu, which otherwise takes touches itself.
 fn takes_touch_pointer(ui: &UiRuntime, menu_visible: bool) -> bool {
     let bed = ui.local_sleeping() && !ui.chat_focused();
-    (ui.inventory_open() || ui.server_forms().owns_input() || bed)
+    (ui.inventory_open() || ui.server_forms().owns_input() || ui.sign_editor().is_open() || bed)
         && (!menu_visible || ui.server_forms().settings_form_active())
 }
 
@@ -240,6 +240,20 @@ mod tests {
         let mut ui = UiRuntime::new(1);
         assert!(!takes_touch_pointer(&ui, false));
         ui.set_local_sleeping(true);
+        assert!(takes_touch_pointer(&ui, false));
+        assert!(!takes_touch_pointer(&ui, true));
+    }
+
+    /// The sign editor's exit reads only the pointer; without a keyboard touch is the way out.
+    #[test]
+    fn the_sign_editor_takes_the_touch_pointer() {
+        let mut ui = UiRuntime::new(1);
+        ui.sign_editor_mut()
+            .open(client_ui::ui_runtime::sign_editor::SignEdit::new(
+                [0; 3],
+                true,
+                world::NbtCompound::default(),
+            ));
         assert!(takes_touch_pointer(&ui, false));
         assert!(!takes_touch_pointer(&ui, true));
     }

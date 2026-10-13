@@ -157,7 +157,7 @@ fn frames(mode: Mode, interval: u32, wrapped: bool) -> Vec<Frame> {
                 Mode::Java17 => {
                     let pose = java::java_biped(&JavaBipedInput {
                         head_pitch: actor.previous_pose.pitch
-                            + (actor.pitch - actor.previous_pose.pitch) * alpha,
+                            + wrap_degrees(actor.pitch - actor.previous_pose.pitch) * alpha,
                         swing: progress,
                         held_right: 1,
                         age: tick as f32 + alpha,

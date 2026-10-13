@@ -75,6 +75,15 @@ pub use sign_edit::SignEditRequest;
 
 static NEXT_BIOME_TINT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_ACTOR_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Allocates a distinct lifetime namespace for network and client-owned actor stores.
+pub(crate) fn allocate_actor_session_id() -> u64 {
+    NEXT_ACTOR_SESSION_ID
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("actor session identity space exhausted")
+}
 pub const COMMITTED_CONTROL_CAPACITY: usize = MAX_ADMITTED_WORLD_EVENTS;
 pub const COMMITTED_UI_CAPACITY: usize = MAX_ADMITTED_WORLD_EVENTS;
 pub const COMMITTED_AUDIO_CAPACITY: usize = MAX_ADMITTED_WORLD_EVENTS;
@@ -147,11 +156,7 @@ impl WorldAuthority {
                 current.checked_add(1)
             })
             .expect("biome tint stream identity space exhausted");
-        let actor_session_id = NEXT_ACTOR_SESSION_ID
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                current.checked_add(1)
-            })
-            .expect("actor session identity space exhausted");
+        let actor_session_id = allocate_actor_session_id();
         let network_id_mode = if bootstrap.block_network_ids_are_hashes {
             NetworkIdMode::Hashed
         } else {

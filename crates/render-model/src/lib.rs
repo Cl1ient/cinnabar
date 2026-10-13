@@ -144,6 +144,7 @@ pub mod hand;
 pub mod lightmap;
 
 pub mod native_trig;
+pub mod spawner;
 pub mod viewmodel;
 pub mod weather;
 pub use actor::ActorRigVertexSegments;
@@ -169,9 +170,7 @@ pub use block_entity::BeaconModel;
 pub use block_entity::ConduitModel;
 pub use block_entity::CrystalBeamModel;
 pub use block_entity::DragonDeathModel;
-pub use block_entity::SPAWNER_MOBS;
 pub use block_entity::ShulkerModel;
-pub use block_entity::SpawnerModel;
 pub use block_entity::{
     AtlasRect, BlockEntityAtlas, MAP_CELL, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef,
 };

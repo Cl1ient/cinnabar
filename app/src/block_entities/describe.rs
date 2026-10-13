@@ -10,8 +10,7 @@ use render_model::{
     BannerLayer, BannerModel, BannerMount, BedModel, BellAttachment, BlockEntityKind, ChestModel,
     ChestPair, ChestVariant, CopperAge, DecoratedPotModel, Facing,
     ITEM_FRAME_ROTATION_STEP_DEGREES, ItemFrameModel, Oxidation, ShulkerModel, SignMount,
-    SkullKind, SkullModel, SkullMount, SpawnerModel, StatueModel, StatuePose, bed_color,
-    sherd_pattern,
+    SkullKind, SkullModel, SkullMount, StatueModel, StatuePose, bed_color, sherd_pattern,
 };
 use world::NbtCompound;
 
@@ -405,14 +404,6 @@ pub(super) fn describe(
             oxidation: Oxidation::from_block_name(block_name)?,
             facing: facing(state).unwrap_or(Facing::North),
         }))),
-        "MobSpawner" => nbt
-            .string("EntityIdentifier")
-            .filter(|mob| !mob.is_empty())
-            .map(|mob| {
-                Template::Static(BlockEntityKind::Spawner(SpawnerModel {
-                    mob: Arc::from(mob),
-                }))
-            }),
         "EndPortal" => Some(Template::Static(BlockEntityKind::EndPortal)),
         "EndGateway" => Some(Template::Static(BlockEntityKind::EndGateway)),
         _ => None,

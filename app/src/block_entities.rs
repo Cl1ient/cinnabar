@@ -15,3 +15,6 @@ mod system;
 pub(crate) use system::{
     BlockEntityFont, BlockEntityRuntime, block_entity_scene, configure, load_block_entity_carrier,
 };
+
+mod spawner;
+pub(crate) use spawner::{SpawnerDisplayPublisher, prepare_spawner_actors};

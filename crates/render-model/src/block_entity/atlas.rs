@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use assets::RuntimeBlockEntityAssets;
 
-use super::{artwork::appended_layout, mob::MobTexture};
+use super::artwork::{StaticTexture, appended_layout};
 
 /// Size of one text canvas cell in atlas pixels.
 pub const TEXT_CELL: [u32; 2] = [96, 48];
@@ -159,7 +159,7 @@ impl BlockEntityAtlas {
 
     /// Shelf-packs `textures` into new static rows below the packed ones, moving the dynamic
     /// strips down; textures wider than the atlas or already present are skipped.
-    pub fn append_textures(&mut self, textures: &[MobTexture]) {
+    pub(super) fn append_textures(&mut self, textures: &[StaticTexture]) {
         let Some((added_height, placements)) = appended_layout(self.size[0], textures, |name| {
             self.placements.contains_key(name)
         }) else {
@@ -634,7 +634,7 @@ mod tests {
         let mut atlas = BlockEntityAtlas::from_assets(
             &assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap(),
         );
-        let texture = MobTexture {
+        let texture = StaticTexture {
             name: "mob/test".into(),
             width: 4,
             height: 3,

@@ -405,7 +405,7 @@ pub(crate) fn publish_entity_shadows(
 
 #[cfg(test)]
 #[path = "actor_publication/tests/custom_emotes.rs"]
-mod custom_emotes;
+pub(super) mod custom_emotes;
 
 #[cfg(test)]
 #[path = "actor_publication/tests/item_swing.rs"]

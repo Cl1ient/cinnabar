@@ -255,7 +255,10 @@ pub fn prepare_actor_render_frame(
         step.partial_tick,
         visibility,
         local_visible,
-        bodies.local_runtime_id,
+        (
+            stream.map(|stream| stream.authority().actor_session_id()),
+            bodies.local_runtime_id,
+        ),
         selected_count,
         bodies.unrigged_actors,
     ));

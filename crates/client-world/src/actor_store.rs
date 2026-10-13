@@ -993,3 +993,6 @@ mod hitbox_tests;
 
 #[cfg(test)]
 mod movement_flags_tests;
+
+mod display;
+pub use display::{DisplayActorStore, MAX_DISPLAY_ACTORS};

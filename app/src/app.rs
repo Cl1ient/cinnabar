@@ -144,7 +144,8 @@ pub(crate) use authority::{configure_client_authority_systems, configure_client_
 
 /// Registers the production actor observation and publication boundaries.
 pub(crate) fn configure_actor_render_systems(app: &mut App) {
-    app.init_resource::<client_presentation::actor_publication::ActorFrameState>()
+    app.init_resource::<crate::block_entities::SpawnerDisplayPublisher>()
+        .init_resource::<client_presentation::actor_publication::ActorFrameState>()
         .add_systems(
             Update,
             (
@@ -163,7 +164,12 @@ pub(crate) fn configure_actor_render_systems(app: &mut App) {
         )
         .add_systems(
             Update,
-            prepare_actor_render_frame.in_set(ClientFrameSet::ActorFinalization),
+            (
+                prepare_actor_render_frame,
+                crate::block_entities::prepare_spawner_actors,
+            )
+                .chain()
+                .in_set(ClientFrameSet::ActorFinalization),
         )
         .add_systems(
             Update,
@@ -479,7 +485,6 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     let mut block_entity_scene =
         crate::block_entities::block_entity_scene(carriers.block_entities.as_deref());
     block_entity_scene.install_entity_assets(&entity_runtime);
-    block_entity_scene.install_mob_assets(&entity_runtime, &actor_catalog);
     let font_runtime = loaded_assets.fonts.into_runtime();
     let block_entity_font = Arc::clone(&font_runtime);
     let font_dir = loaded_assets.selected_path.parent();

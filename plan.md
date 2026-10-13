@@ -8269,6 +8269,17 @@ and custom base-item coverage is incomplete. Optional Java animation name routin
 remains a separate incomplete admission path. This does not close the complete
 equipment parity gate. `make assets` rebuilds carriers that lack these records.
 
+## Spawner display actors
+
+Spawner displays now use client-owned actor lifetimes and the ordinary actor
+evaluator, render controllers, sampled poses and active pack artwork. Configured
+entities no longer depend on a fixed mob list. Displays retire when the block or
+world changes, and pack replacement rebinds existing lifetimes.
+
+Incomplete parity: display factory metadata defaults, exact native renderer bounds,
+activation edge cases and the full entity gallery are unverified. Frame and GPU
+budgets remain open; these changes do not close those acceptance gates.
+
 Item-use animation routes and charged projectile drawing roles are typed admissions.
 Local and remote equipment read numerical registry facts, including generation replacements;
 item names do not select bow or crossbow use frames. Unsupported charged projectile metadata

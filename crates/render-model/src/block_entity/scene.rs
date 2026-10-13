@@ -23,12 +23,10 @@ use super::{
     frame::ItemFrameModel,
     heads::HeadModels,
     mesh::{BlockEntityVertex, MeshBuilder},
-    mob::MobModels,
     pot::DecoratedPotModel,
     shulker::ShulkerModel,
     sign::SignModel,
     skull::SkullModel,
-    spawner::SpawnerModel,
     statue::StatueModel,
 };
 
@@ -56,7 +54,6 @@ pub enum BlockEntityKind {
     CrystalBeam(CrystalBeamModel),
     DragonDeath(DragonDeathModel),
     Statue(StatueModel),
-    Spawner(SpawnerModel),
     EndPortal,
     EndGateway,
 }
@@ -79,7 +76,6 @@ impl BlockEntityKind {
         match self {
             Self::Skull(_)
             | Self::Bed(_)
-            | Self::Spawner(_)
             | Self::Statue(_)
             | Self::Beacon(_)
             | Self::CrystalBeam(_)
@@ -103,11 +99,7 @@ impl BlockEntityKind {
     const fn is_clock_driven(&self) -> bool {
         matches!(
             self,
-            Self::Banner(_)
-                | Self::EnchantTable { .. }
-                | Self::Conduit(_)
-                | Self::Beacon(_)
-                | Self::Spawner(_)
+            Self::Banner(_) | Self::EnchantTable { .. } | Self::Conduit(_) | Self::Beacon(_)
         )
     }
 }
@@ -204,7 +196,6 @@ pub struct BlockEntityScene {
     frame: BlockEntityFrame,
     heads: HeadModels,
     bed: Option<HeadModel>,
-    mobs: MobModels,
     rejected_quads: u64,
     /// Inputs of the current frame when it holds no clock-driven kind; unchanged inputs reuse it.
     reusable: Option<(Vec<CrackInstance>, Vec<BlockEntitySubmission>)>,
@@ -215,9 +206,9 @@ pub struct BlockEntityScene {
 }
 
 impl BlockEntityScene {
-    /// Snapshots the static mob textures for preparation on a join or reload worker.
+    /// Returns the artwork preparer for a join or reload worker.
     pub fn artwork_preparer(&self) -> BlockEntityArtworkPreparer {
-        BlockEntityArtworkPreparer::new(self.mobs.textures())
+        BlockEntityArtworkPreparer::new(&[])
     }
 
     /// Shares the installed static artwork as the startup fallback for pack workers.
@@ -319,35 +310,6 @@ impl BlockEntityScene {
         self.atlas.as_ref()?.map_cell(slot)
     }
 
-    /// Builds spawner mob models from the entity and actor catalogs (read only) and appends their
-    /// textures to the atlas; call after [`Self::install_assets`].
-    pub fn install_mob_assets(
-        &mut self,
-        entities: &assets::RuntimeEntityAssets,
-        catalog: &assets::RuntimeActorCatalog,
-    ) {
-        let mobs = MobModels::from_assets(entities, catalog);
-        let Some(current) = self.atlas.as_ref() else {
-            return;
-        };
-        if !BlockEntityArtworkPreparer::new(mobs.textures())
-            .accepts_size([current.size()[0], current.static_height()])
-        {
-            tracing::warn!(
-                "spawner artwork retained because appended textures exceed the atlas budget"
-            );
-            return;
-        }
-        let Some(atlas) = self.atlas.as_mut().map(Arc::make_mut) else {
-            return;
-        };
-        atlas.append_textures(mobs.textures());
-        self.image = Some(Arc::new(BlockEntityAtlasImage::of(atlas)));
-        self.mobs = mobs;
-        self.reusable = None;
-        self.cached_submissions.clear();
-    }
-
     pub fn update(
         &mut self,
         clock: SceneClock,
@@ -398,7 +360,7 @@ impl BlockEntityScene {
             emit_submission(
                 &mut builder,
                 atlas,
-                (&self.heads, &self.mobs, self.bed.as_ref()),
+                (&self.heads, self.bed.as_ref()),
                 submission,
                 clock,
             );
@@ -482,7 +444,7 @@ mod reach_tests;
 fn emit_submission(
     builder: &mut MeshBuilder,
     atlas: &BlockEntityAtlas,
-    (heads, mobs, bed): (&HeadModels, &MobModels, Option<&HeadModel>),
+    (heads, bed): (&HeadModels, Option<&HeadModel>),
     submission: &BlockEntitySubmission,
     clock: SceneClock,
 ) {
@@ -511,9 +473,6 @@ fn emit_submission(
         BlockEntityKind::CrystalBeam(model) => super::crystal_beam::emit(builder, atlas, model),
         BlockEntityKind::DragonDeath(model) => super::dragon_death::emit(builder, model),
         BlockEntityKind::Statue(model) => super::statue::emit(builder, atlas, heads, block, model),
-        BlockEntityKind::Spawner(model) => {
-            super::spawner::emit(builder, atlas, mobs, block, model, clock);
-        }
         BlockEntityKind::EndPortal => super::portal::emit(builder, atlas, block, false, clock),
         BlockEntityKind::EndGateway => super::portal::emit(builder, atlas, block, true, clock),
     }

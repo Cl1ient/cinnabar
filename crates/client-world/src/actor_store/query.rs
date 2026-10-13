@@ -80,6 +80,18 @@ impl ActorStore {
             .count()
     }
 
+    /// Non-spectator players present in the world, whether or not their appearance is drawable.
+    pub(crate) fn present_players(
+        &self,
+        excluded_runtime_id: Option<u64>,
+    ) -> impl Iterator<Item = &ActorSnapshot> {
+        self.actors.values().filter(move |actor| {
+            Some(actor.runtime_id) != excluded_runtime_id
+                && matches!(actor.kind, ActorKind::Player { .. })
+                && self.camera_aim_assist_eligible(actor) == Some(true)
+        })
+    }
+
     pub(crate) fn render_players(
         &self,
         excluded_runtime_id: Option<u64>,

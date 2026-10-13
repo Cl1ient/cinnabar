@@ -39,7 +39,7 @@ use {
 
 const BLOCK_ENTITY_ASSETS_FILENAME: &str = assets::carriers::BLOCK_ENTITY.output;
 /// Block entities farther than this from the eye are not drawn.
-const SCAN_RADIUS_BLOCKS: f32 = 64.0;
+pub(super) const SCAN_RADIUS_BLOCKS: f32 = 64.0;
 const MAX_SUBMISSIONS: usize = 4_096;
 const TICKS_PER_SECOND: f64 = 20.0;
 const TEXT_CACHE_ENTRIES: usize = 256;
@@ -49,7 +49,7 @@ mod beacon;
 #[cfg(test)]
 mod beacon_tests;
 mod bed;
-mod columns;
+pub(super) mod columns;
 mod crystal_beams;
 mod culling;
 mod dragon_death;
@@ -484,20 +484,30 @@ pub(crate) fn update_block_entity_scene(
             } else {
                 &mut deferred
             };
-            let Some(mut scan) = columns::frame_scan(previous, chunk, near, budget, |previous| {
-                let portals = portals::column_cells(chunk_key, chunk, |id| {
-                    portal_kind(runtime, &collisions, mode, id)
-                });
-                let entities =
-                    columns::routed_entities(chunk, previous, |id, runtime_id, nbt, position| {
-                        block_info(runtime, &collisions, mode, runtime_id)
-                            .zip(nbt.parse())
-                            .and_then(|(info, root)| {
-                                describe(id, &info.name, &info.state, &root, position)
-                            })
+            let Some(mut scan) = columns::frame_scan(
+                previous,
+                chunk,
+                near,
+                budget,
+                columns::ColumnScan::is_current,
+                |previous| {
+                    let portals = portals::column_cells(chunk_key, chunk, |id| {
+                        portal_kind(runtime, &collisions, mode, id)
                     });
-                columns::ColumnScan::new(chunk, portals, entities)
-            }) else {
+                    let entities = columns::routed_entities(
+                        chunk,
+                        previous,
+                        |id, runtime_id, nbt, position| {
+                            block_info(runtime, &collisions, mode, runtime_id)
+                                .zip(nbt.parse())
+                                .and_then(|(info, root)| {
+                                    describe(id, &info.name, &info.state, &root, position)
+                                })
+                        },
+                    );
+                    columns::ColumnScan::new(chunk, portals, entities)
+                },
+            ) else {
                 continue;
             };
             scan.seen_frame = frame_stamp;

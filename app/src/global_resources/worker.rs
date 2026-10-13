@@ -121,11 +121,7 @@ fn run(
                 action: Action::Import,
                 ..
             } => match super::picker::pick() {
-                Ok(Some(path)) => import(&mut library, path, &mut snapshot, &icon_root),
-                Ok(None) => {
-                    snapshot.message.clear();
-                    Ok(())
-                }
+                Ok(paths) => import_files(&mut library, paths, &mut snapshot, &icon_root),
                 Err(error) => {
                     snapshot.message = error;
                     Ok(())
@@ -143,6 +139,34 @@ fn run(
         refresh(&library, &mut snapshot);
         let _ = outgoing.send(Event::Snapshot(snapshot.clone()));
     }
+}
+
+/// Imports each selection through the single-pack path and keeps every batch result visible.
+/// A single selection preserves its original status and error handling.
+fn import_files(
+    library: &mut GlobalPackLibrary,
+    mut paths: Vec<PathBuf>,
+    snapshot: &mut Snapshot,
+    icon_root: &std::path::Path,
+) -> Result<(), LibraryError> {
+    if paths.len() == 1 {
+        return import(library, paths.remove(0), snapshot, icon_root);
+    }
+    let mut messages = Vec::with_capacity(paths.len());
+    snapshot.message.clear();
+    for path in paths {
+        let name = path
+            .file_name()
+            .unwrap_or(path.as_os_str())
+            .to_string_lossy()
+            .into_owned();
+        if let Err(error) = import(library, path, snapshot, icon_root) {
+            snapshot.message = error.to_string();
+        }
+        messages.push(format!("{name}: {}", snapshot.message));
+    }
+    snapshot.message = messages.join("\n");
+    Ok(())
 }
 
 /// Only actions that refer to published list indices require that list generation.
@@ -358,6 +382,104 @@ mod tests {
             .unwrap()
             .imported
             .remove(0)
+    }
+
+    #[test]
+    fn batch_import_continues_after_failures_and_keeps_all_results() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("installed");
+        let mut library = GlobalPackLibrary::open(&root, engine_version()).unwrap();
+        let corrupt = fixture.path().join("corrupt.mcpack");
+        std::fs::write(&corrupt, b"not a pack archive").unwrap();
+        let missing = fixture.path().join("missing.mcpack");
+        let errors = [&corrupt, &missing].map(|path| library.import(path).unwrap_err().to_string());
+        let paths = vec![
+            write_fixture(fixture.path(), 1),
+            corrupt,
+            write_fixture(fixture.path(), 2),
+            missing,
+            write_fixture(fixture.path(), 3),
+        ];
+        let names = paths
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let mut snapshot = Snapshot {
+            selected: Some((false, 0)),
+            details_expanded: Some((false, 0)),
+            settings: Some(0),
+            ..Default::default()
+        };
+
+        import_files(&mut library, paths, &mut snapshot, &root.join("icons")).unwrap();
+        refresh(&library, &mut snapshot);
+
+        assert_eq!(snapshot.available.len(), 3);
+        assert!(snapshot.active.is_empty());
+        assert_eq!(snapshot.selected, None);
+        assert_eq!(snapshot.details_expanded, None);
+        assert_eq!(snapshot.settings, None);
+        for name in names {
+            assert!(snapshot.message.contains(&name), "{}", snapshot.message);
+        }
+        for error in errors {
+            assert!(snapshot.message.contains(&error), "{}", snapshot.message);
+        }
+        assert_eq!(
+            snapshot
+                .message
+                .matches("Imported 1 resource packs")
+                .count(),
+            3
+        );
+    }
+
+    #[test]
+    fn one_selected_file_preserves_single_import_status_and_errors() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("installed");
+        let mut library = GlobalPackLibrary::open(&root, engine_version()).unwrap();
+        let mut reference =
+            GlobalPackLibrary::open(fixture.path().join("reference"), engine_version()).unwrap();
+        let path = write_fixture(fixture.path(), 1);
+        let mut expected = Snapshot::default();
+        import(
+            &mut reference,
+            path.clone(),
+            &mut expected,
+            &root.join("reference-icons"),
+        )
+        .unwrap();
+        let mut actual = Snapshot::default();
+        import_files(&mut library, vec![path], &mut actual, &root.join("icons")).unwrap();
+        assert_eq!(actual.message, expected.message);
+
+        let missing = fixture.path().join("missing.mcpack");
+        let expected_error = library.import(&missing).unwrap_err().to_string();
+        let error = import_files(
+            &mut library,
+            vec![missing],
+            &mut actual,
+            &root.join("icons"),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), expected_error);
+    }
+
+    #[test]
+    fn cancelled_multi_selection_clears_status_without_changing_selection() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("installed");
+        let mut library = GlobalPackLibrary::open(&root, engine_version()).unwrap();
+        let mut snapshot = Snapshot {
+            message: "Updating resource packs…".into(),
+            selected: Some((false, 0)),
+            ..Default::default()
+        };
+        import_files(&mut library, Vec::new(), &mut snapshot, &root.join("icons")).unwrap();
+        assert!(snapshot.message.is_empty());
+        assert_eq!(snapshot.selected, Some((false, 0)));
+        assert!(library.available().is_empty());
     }
 
     #[test]

@@ -196,6 +196,7 @@ pub fn collect_files(
         .iter()
         .map(|motive| motive.texture())
         .chain(std::iter::once(assets::painting::PAINTING_ATLAS.to_owned()))
+        .filter(|stem| !textures.contains(stem))
         .collect::<BTreeSet<_>>();
     textures.extend(paintings.iter().cloned());
     for stem in textures {

@@ -16,7 +16,9 @@ fn compile_keys(
             source_path,
             width: assets::TILE_SIZE,
             height: assets::TILE_SIZE,
-            rgba8: [31, 47, 59, 255].repeat((assets::TILE_SIZE * assets::TILE_SIZE) as usize),
+            rgba8: [31, 47, 59, 255]
+                .repeat((assets::TILE_SIZE * assets::TILE_SIZE) as usize)
+                .into_boxed_slice(),
         })
         .collect::<Vec<_>>();
     let plan = compile_animation_plan(

@@ -153,3 +153,16 @@ fn invalid_geometry_or_coordinates_cannot_produce_invalid_semantic_samples() {
     assert!(!state.move_to(4, [f32::INFINITY, 0.8], 5));
     assert!(state.sample().is_empty());
 }
+
+#[test]
+fn an_ended_finger_frees_its_id_for_a_new_contact_in_the_same_frame() {
+    let mut state = TouchControlState::default();
+    state.begin(7, [0.2, 0.8], 1, Some(region(touch::JUMP)));
+    let ended = state.end(7).unwrap();
+    assert_eq!(ended.hit_id, Some(touch::JUMP));
+    assert!(state.begin(7, [0.2, 0.7], 2, Some(region(touch::JOYSTICK))));
+    let held = state.sample();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].hit_id, Some(touch::JOYSTICK));
+    assert_eq!(state.end(8), None);
+}

@@ -1,12 +1,12 @@
 //! Gameplay touch controls: each finger keeps the control it pressed until it lifts.
 
 use bevy::{
-    input::touch::Touches,
-    math::Vec2,
-    prelude::{Local, Query, ResMut, With},
+    ecs::message::{MessageCursor, Messages},
+    input::touch::{TouchInput, TouchPhase, Touches},
+    prelude::{Local, Query, Res, ResMut, With},
     window::{PrimaryWindow, Window},
 };
-use semantic_input::{TouchContact, TouchControlState, touch};
+use semantic_input::{TouchContact, TouchControlRegion, TouchControlState, touch};
 
 use crate::semantic_controls::SemanticTouchTargets;
 use client_shell::{
@@ -18,12 +18,47 @@ use client_shell::{
 /// Provisional until measured against the native touch look curve.
 const LOOK_GAIN: [f32; 2] = [4.0, 2.0];
 
+/// Applies touch events in arrival order, so an id Android reuses after a lift starts a fresh
+/// contact. Returns the lifted contacts' last samples, or the screen-opening control a press hit.
+fn apply_touch_events(
+    state: &mut TouchControlState,
+    events: impl IntoIterator<Item = (u64, TouchPhase, [f32; 2])>,
+    region: impl Fn([f32; 2]) -> Option<TouchControlRegion>,
+) -> Result<Vec<TouchContact>, u16> {
+    let mut lifted = Vec::new();
+    for (id, phase, position) in events {
+        match phase {
+            TouchPhase::Started => {
+                let region = region(position);
+                if let Some(hit_id) = region
+                    .map(|region| region.hit_id)
+                    .filter(|hit_id| matches!(*hit_id, touch::INVENTORY | touch::MENU))
+                {
+                    return Err(hit_id);
+                }
+                state.begin(id, position, 0, region);
+            }
+            TouchPhase::Moved => {
+                state.move_to(id, position, 0);
+            }
+            TouchPhase::Ended => {
+                state.move_to(id, position, 0);
+                lifted.extend(state.end(id));
+            }
+            TouchPhase::Canceled => state.release(id),
+        }
+    }
+    Ok(lifted)
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "UI, menu and player authority are borrowed separately."
 )]
 pub(crate) fn drive_gameplay_touch_targets(
     mut touches: ResMut<Touches>,
+    touch_input: Option<Res<Messages<TouchInput>>>,
+    mut touch_cursor: Local<MessageCursor<TouchInput>>,
     mut ui: ResMut<UiRuntimeResource>,
     mut targets: ResMut<SemanticTouchTargets>,
     player: Option<ResMut<client_state::PlayerRuntime>>,
@@ -33,6 +68,11 @@ pub(crate) fn drive_gameplay_touch_targets(
     mut state: Local<TouchControlState>,
 ) {
     targets.release_all();
+    // Every event is consumed each frame, so none replays once gameplay regains input.
+    let events: Vec<_> = touch_input
+        .as_deref()
+        .map(|messages| touch_cursor.read(messages).cloned().collect())
+        .unwrap_or_default();
     let Some(mut presentation) = presentation.filter(|view| view.touch_controls_enabled()) else {
         state.clear();
         return;
@@ -50,53 +90,40 @@ pub(crate) fn drive_gameplay_touch_targets(
         return;
     };
     let size = [window.width().max(1.0), window.height().max(1.0)];
-    let normalized = |position: Vec2| {
-        [
-            (position.x / size[0]).clamp(0.0, 1.0),
-            (position.y / size[1]).clamp(0.0, 1.0),
-        ]
-    };
-    for contact in touches.iter_just_canceled() {
-        state.release(contact.id());
-    }
-    let started: Vec<_> = touches
-        .iter_just_pressed()
-        .filter(|contact| !touches.just_canceled(contact.id()))
-        .map(|contact| (contact.id(), normalized(contact.start_position())))
-        .collect();
-    for &(id, start) in &started {
-        let region = presentation.gameplay_touch_region(start, size);
-        let opens_screen = match region.map(|region| region.hit_id) {
-            Some(touch::INVENTORY) => {
+    let events = events.iter().map(|event| {
+        let position = [
+            (event.position.x / size[0]).clamp(0.0, 1.0),
+            (event.position.y / size[1]).clamp(0.0, 1.0),
+        ];
+        (event.id, event.phase, position)
+    });
+    let lifted = match apply_touch_events(&mut state, events, |position| {
+        presentation.gameplay_touch_region(position, size)
+    }) {
+        Ok(lifted) => lifted,
+        Err(hit_id) => {
+            if hit_id == touch::INVENTORY {
                 let _ = ui.toggle_inventory(&mut player);
-                true
+            } else if let Some(menu) = menu.as_mut() {
+                menu.open_pause();
             }
-            Some(touch::MENU) => {
-                if let Some(menu) = menu.as_mut() {
-                    menu.open_pause();
-                }
-                true
-            }
-            _ => false,
-        };
-        if opens_screen {
-            // The opened screen must not read these presses as its own taps.
-            for &(id, _) in &started {
+            // The opened screen must not read this frame's presses as its own taps.
+            let started: Vec<_> = touches
+                .iter_just_pressed()
+                .map(|touch| touch.id())
+                .collect();
+            for id in started {
                 touches.clear_just_pressed(id);
             }
             state.clear();
             presentation.set_touch_contacts(Vec::new());
             return;
         }
-        state.begin(id, start, 0, region);
-    }
-    for contact in touches.iter().chain(touches.iter_just_released()) {
-        state.move_to(contact.id(), normalized(contact.position()), 0);
-    }
-    let samples = state.sample();
-    presentation.set_touch_contacts(samples.clone());
-    for sample in samples {
-        let sample = if sample.hit_id == Some(touch::LOOK_SURFACE) {
+    };
+    let held = state.sample();
+    presentation.set_touch_contacts(held.clone());
+    let look_scaled = |sample: TouchContact| {
+        if sample.hit_id == Some(touch::LOOK_SURFACE) {
             TouchContact {
                 delta: [
                     sample.delta[0] * LOOK_GAIN[0],
@@ -106,14 +133,75 @@ pub(crate) fn drive_gameplay_touch_targets(
             }
         } else {
             sample
-        };
-        if touches.just_released(sample.contact_id) {
+        }
+    };
+    for sample in held.iter().cloned().map(look_scaled) {
+        targets.set_sample(&sample);
+    }
+    // A lifted contact whose id already carries a new press routes as that press instead.
+    for sample in lifted.into_iter().map(look_scaled) {
+        if !held
+            .iter()
+            .any(|other| other.contact_id == sample.contact_id)
+        {
             targets.pulse(sample);
-        } else {
-            targets.set_sample(&sample);
         }
     }
-    for contact in touches.iter_just_released() {
-        state.release(contact.id());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use semantic_input::TouchBounds;
+
+    fn stick(_: [f32; 2]) -> Option<TouchControlRegion> {
+        Some(TouchControlRegion {
+            hit_id: touch::JOYSTICK,
+            bounds: TouchBounds {
+                min: [0.0; 2],
+                max: [1.0; 2],
+            },
+        })
+    }
+
+    /// Android may end a finger and reuse its id for a new press before the next update.
+    #[test]
+    fn a_reused_touch_id_keeps_its_new_contact() {
+        let mut state = TouchControlState::default();
+        let at = [0.5, 0.5];
+        apply_touch_events(&mut state, [(3, TouchPhase::Started, at)], stick).unwrap();
+        let lifted = apply_touch_events(
+            &mut state,
+            [(3, TouchPhase::Ended, at), (3, TouchPhase::Started, at)],
+            stick,
+        )
+        .unwrap();
+        assert_eq!(lifted.len(), 1);
+        let held = state.sample();
+        assert_eq!(held.len(), 1);
+        assert_eq!(
+            (held[0].contact_id, held[0].hit_id),
+            (3, Some(touch::JOYSTICK))
+        );
+    }
+
+    /// Pause and inventory presses stop processing and open their screens.
+    #[test]
+    fn screen_controls_open_instead_of_capturing() {
+        let mut state = TouchControlState::default();
+        let pause = |_| {
+            Some(TouchControlRegion {
+                hit_id: touch::MENU,
+                bounds: TouchBounds {
+                    min: [0.0; 2],
+                    max: [1.0; 2],
+                },
+            })
+        };
+        assert_eq!(
+            apply_touch_events(&mut state, [(1, TouchPhase::Started, [0.5; 2])], pause),
+            Err(touch::MENU)
+        );
+        assert!(state.sample().is_empty());
     }
 }

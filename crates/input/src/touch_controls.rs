@@ -137,27 +137,39 @@ impl TouchControlState {
         self.contacts.clear();
     }
 
+    /// Removes a lifted finger and returns its last sample, so its id can start a new contact
+    /// in the same frame while a tap shorter than a frame still lands.
+    pub fn end(&mut self, contact_id: u64) -> Option<TouchContact> {
+        let index = self
+            .contacts
+            .iter()
+            .position(|contact| contact.contact_id == contact_id)?;
+        sample_contact(&mut self.contacts.remove(index))
+    }
+
     /// Captured fingers as contacts; look motion is consumed once, stick deflection stays held.
     pub fn sample(&mut self) -> Vec<TouchContact> {
         self.contacts
             .iter_mut()
-            .filter_map(|contact| {
-                let region = contact.region?;
-                let delta = match region.hit_id {
-                    touch::JOYSTICK => region.bounds.joystick_deflection(contact.position),
-                    touch::LOOK_SURFACE => std::mem::take(&mut contact.look_delta),
-                    _ => [0.0; 2],
-                };
-                Some(TouchContact {
-                    contact_id: contact.contact_id,
-                    activity_sequence: contact.activity_sequence,
-                    position: contact.position,
-                    delta,
-                    hit_id: Some(region.hit_id),
-                })
-            })
+            .filter_map(sample_contact)
             .collect()
     }
+}
+
+fn sample_contact(contact: &mut CapturedContact) -> Option<TouchContact> {
+    let region = contact.region?;
+    let delta = match region.hit_id {
+        touch::JOYSTICK => region.bounds.joystick_deflection(contact.position),
+        touch::LOOK_SURFACE => std::mem::take(&mut contact.look_delta),
+        _ => [0.0; 2],
+    };
+    Some(TouchContact {
+        contact_id: contact.contact_id,
+        activity_sequence: contact.activity_sequence,
+        position: contact.position,
+        delta,
+        hit_id: Some(region.hit_id),
+    })
 }
 
 fn valid_position(position: [f32; 2]) -> bool {

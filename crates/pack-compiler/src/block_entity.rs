@@ -365,6 +365,81 @@ fn invalid(detail: &str) -> AssetError {
     }
 }
 
+/// Decoded color pixels supplied by the shared pack texture resolver.
+pub struct BlockEntityTexture {
+    pub width: u32,
+    pub height: u32,
+    pub rgba8: Box<[u8]>,
+}
+
+/// Rebuilds the carrier atlas from winning logical texture reads and its untouched base pixels.
+/// The caller admits sizes against its complete render budget, including appended and dynamic rows.
+/// Missing, invalid, or unpackable replacements retain the base tile; removing a pack restores it.
+pub fn overlay_block_entity_assets(
+    base: &assets::RuntimeBlockEntityAssets,
+    accepts_size: impl Fn([u32; 2]) -> bool,
+    mut read: impl FnMut(&str) -> Option<BlockEntityTexture>,
+) -> Result<assets::RuntimeBlockEntityAssets, AssetError> {
+    let [atlas_width, _] = base.atlas_size();
+    // Reserve every base tile in the layout before admitting replacements in logical name order.
+    let mut textures: Vec<_> = base
+        .placements()
+        .iter()
+        .map(|tile| {
+            (
+                tile.name.to_string(),
+                Texture {
+                    width: tile.width,
+                    height: tile.height,
+                    rgba8: Vec::new(),
+                },
+            )
+        })
+        .collect();
+    let fits = |textures: &[(String, Texture)]| -> Result<(), AssetError> {
+        let (height, _) = atlas_layout(textures)?;
+        if !accepts_size([ATLAS_WIDTH, height]) {
+            return Err(invalid("block-entity atlas exceeds the render budget"));
+        }
+        Ok(())
+    };
+    fits(&textures)?;
+    for (index, placement) in base.placements().iter().enumerate() {
+        if let Some(texture) = read(&placement.name).filter(|texture| {
+            texture.width > 0
+                && texture.height > 0
+                && texture.width <= ATLAS_WIDTH
+                && texture.height <= MAX_STRIP_HEIGHT
+                && texture.rgba8.len() == texture.width as usize * texture.height as usize * 4
+        }) {
+            let fallback = std::mem::replace(
+                &mut textures[index].1,
+                Texture {
+                    width: texture.width,
+                    height: texture.height,
+                    rgba8: texture.rgba8.into_vec(),
+                },
+            );
+            if fits(&textures).is_err() {
+                textures[index].1 = fallback;
+            }
+        }
+        if textures[index].1.rgba8.is_empty() {
+            let mut rgba8 =
+                Vec::with_capacity(placement.width as usize * placement.height as usize * 4);
+            for y in placement.y..placement.y + placement.height {
+                let start = ((y * atlas_width + placement.x) * 4) as usize;
+                rgba8.extend_from_slice(
+                    &base.atlas_rgba8()[start..start + placement.width as usize * 4],
+                );
+            }
+            textures[index].1.rgba8 = rgba8;
+        }
+    }
+    let (width, height, pixels, placements) = pack_atlas(textures)?;
+    base.repack(width, height, &pixels, &placements)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -675,79 +750,4 @@ mod tests {
         assert_eq!(compiled.report.textures_packed, 0);
         assert!(assets::RuntimeBlockEntityAssets::decode(&compiled.bytes).is_ok());
     }
-}
-
-/// Decoded color pixels supplied by the shared pack texture resolver.
-pub struct BlockEntityTexture {
-    pub width: u32,
-    pub height: u32,
-    pub rgba8: Box<[u8]>,
-}
-
-/// Rebuilds the carrier atlas from winning logical texture reads and its untouched base pixels.
-/// The caller admits sizes against its complete render budget, including appended and dynamic rows.
-/// Missing, invalid, or unpackable replacements retain the base tile; removing a pack restores it.
-pub fn overlay_block_entity_assets(
-    base: &assets::RuntimeBlockEntityAssets,
-    accepts_size: impl Fn([u32; 2]) -> bool,
-    mut read: impl FnMut(&str) -> Option<BlockEntityTexture>,
-) -> Result<assets::RuntimeBlockEntityAssets, AssetError> {
-    let [atlas_width, _] = base.atlas_size();
-    // Reserve every base tile in the layout before admitting replacements in logical name order.
-    let mut textures: Vec<_> = base
-        .placements()
-        .iter()
-        .map(|tile| {
-            (
-                tile.name.to_string(),
-                Texture {
-                    width: tile.width,
-                    height: tile.height,
-                    rgba8: Vec::new(),
-                },
-            )
-        })
-        .collect();
-    let fits = |textures: &[(String, Texture)]| -> Result<(), AssetError> {
-        let (height, _) = atlas_layout(textures)?;
-        if !accepts_size([ATLAS_WIDTH, height]) {
-            return Err(invalid("block-entity atlas exceeds the render budget"));
-        }
-        Ok(())
-    };
-    fits(&textures)?;
-    for (index, placement) in base.placements().iter().enumerate() {
-        if let Some(texture) = read(&placement.name).filter(|texture| {
-            texture.width > 0
-                && texture.height > 0
-                && texture.width <= ATLAS_WIDTH
-                && texture.height <= MAX_STRIP_HEIGHT
-                && texture.rgba8.len() == texture.width as usize * texture.height as usize * 4
-        }) {
-            let fallback = std::mem::replace(
-                &mut textures[index].1,
-                Texture {
-                    width: texture.width,
-                    height: texture.height,
-                    rgba8: texture.rgba8.into_vec(),
-                },
-            );
-            if fits(&textures).is_err() {
-                textures[index].1 = fallback;
-            }
-        }
-        if textures[index].1.rgba8.is_empty() {
-            let mut rgba8 =
-                Vec::with_capacity(placement.width as usize * placement.height as usize * 4);
-            for y in placement.y..placement.y + placement.height {
-                let start = ((y * atlas_width + placement.x) * 4) as usize;
-                rgba8.extend_from_slice(
-                    &base.atlas_rgba8()[start..start + placement.width as usize * 4],
-                );
-            }
-            textures[index].1.rgba8 = rgba8;
-        }
-    }
-    let (width, height, pixels, placements) = pack_atlas(textures)?;
-    base.repack(width, height, &pixels, &placements)
 }

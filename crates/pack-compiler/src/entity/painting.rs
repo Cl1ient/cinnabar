@@ -245,4 +245,98 @@ mod tests {
         assets::RuntimeEntityAssets::from_compiled(compiled.assets)
             .expect("full pack catalog remains admissible");
     }
+
+    #[test]
+    fn painting_completion_preserves_authored_geometry_at_catalog_capacity() {
+        let geometries = (0..assets::MAX_ENTITY_GEOMETRIES).map(|index| serde_json::json!({
+            "description":{"identifier":format!("geometry.fixture.{index}"),"texture_width":16,"texture_height":16},
+            "bones":[{"name":"root","cubes":[{"origin":[0,0,0],"size":[16,16,16],"uv":[0,0]}]}]
+        })).collect::<Vec<_>>();
+        let geometry = serde_json::to_vec(
+            &serde_json::json!({"format_version":"1.12.0","minecraft:geometry":geometries}),
+        )
+        .unwrap();
+        let entity = br#"{"format_version":"1.10.0","minecraft:client_entity":{"description":{"identifier":"fixture:actor","geometry":{"default":"geometry.fixture.0"}}}}"#;
+        let compiled = crate::compile_entity_pack(vec![
+            ("models/entity/fixture.json".into(), geometry),
+            ("entity/fixture.json".into(), entity.to_vec()),
+            (
+                format!("{}.png", assets::painting::PAINTING_ATLAS).into(),
+                png(256, 256, [30, 90, 150, 255]),
+            ),
+        ])
+        .unwrap()
+        .unwrap();
+        assert_eq!(compiled.skipped, super::super::EntityPackSkips::default());
+        assert_eq!(
+            compiled.assets.geometries.len(),
+            assets::MAX_ENTITY_GEOMETRIES
+        );
+        assert!(
+            compiled
+                .assets
+                .geometries
+                .iter()
+                .all(|geometry| geometry.identifier.starts_with("geometry.fixture."))
+        );
+        assert!(
+            compiled
+                .assets
+                .symbols
+                .iter()
+                .any(|symbol| symbol.identifier.as_ref() == "fixture:actor")
+        );
+        assets::RuntimeEntityAssets::from_compiled(compiled.assets)
+            .expect("full authored geometry remains admissible");
+    }
+
+    #[test]
+    fn painting_completion_preserves_authored_symbols_at_catalog_capacity() {
+        let controllers = (0..assets::MAX_ENTITY_ASSET_SYMBOLS - 2)
+            .map(|index| {
+                (
+                    format!("controller.render.fixture.{index}"),
+                    serde_json::json!({}),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        let controllers = serde_json::to_vec(
+            &serde_json::json!({"format_version":"1.8.0","render_controllers":controllers}),
+        )
+        .unwrap();
+        let entity = br#"{"format_version":"1.10.0","minecraft:client_entity":{"description":{"identifier":"fixture:actor"}}}"#;
+        let compiled = crate::compile_entity_pack(vec![
+            ("render_controllers/fixture.json".into(), controllers),
+            ("entity/fixture.json".into(), entity.to_vec()),
+            (
+                format!("{}.png", assets::painting::PAINTING_ATLAS).into(),
+                png(256, 256, [30, 90, 150, 255]),
+            ),
+        ])
+        .unwrap()
+        .unwrap();
+        assert_eq!(compiled.skipped, super::super::EntityPackSkips::default());
+        assert_eq!(
+            compiled.assets.symbols.len(),
+            assets::MAX_ENTITY_ASSET_SYMBOLS
+        );
+        assert!(
+            compiled
+                .assets
+                .symbols
+                .iter()
+                .any(|symbol| symbol.identifier.as_ref() == "fixture:actor")
+        );
+        assert_eq!(
+            compiled
+                .assets
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.identifier.starts_with("controller.render.fixture."))
+                .count(),
+            assets::MAX_ENTITY_ASSET_SYMBOLS - 2
+        );
+        assets::RuntimeEntityAssets::from_compiled(compiled.assets)
+            .expect("full authored symbol inventory remains admissible");
+    }
 }

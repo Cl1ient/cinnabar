@@ -4,7 +4,7 @@ use assets::{
     FontPixels, FontRendering, FontTexturePage, GlyphMetrics, RuntimeUiAssets, encode_font_catalog,
     encode_ui_catalog,
 };
-use json_ui::{Catalog, Context, DataSource, render_screen};
+use json_ui::{Catalog, Context, DataSource, bind_screen, render_bound, resolve};
 use sha2::{Digest, Sha256};
 use ui::{DpiScale, SafeArea, UiTree};
 
@@ -314,6 +314,17 @@ fn paint_edit_label(
         ("ui/fixture.json", json.as_bytes()),
     ])
     .unwrap();
+    let context = Context::desktop();
+    let resolved = resolve(&catalog, "fixture.screen", &context)
+        .control
+        .expect("editable fixture resolves");
+    let bound = bind_screen(
+        &resolved,
+        &catalog,
+        &context,
+        &DataSource::new(),
+        &mut Default::default(),
+    );
     let mut nodes = Vec::new();
     let mut next = 1;
     let frame = engine
@@ -333,17 +344,7 @@ fn paint_edit_label(
                 next: &mut next,
                 renderers: &mut [],
             },
-            |env, root| {
-                render_screen(
-                    "fixture.screen",
-                    &catalog,
-                    &Context::desktop(),
-                    &DataSource::new(),
-                    root,
-                    env,
-                    &Default::default(),
-                )
-            },
+            |env, root| Some(render_bound(bound, root, env, &Default::default())),
         )
         .unwrap()
         .expect("editable label draws");

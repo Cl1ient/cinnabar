@@ -25,7 +25,7 @@ impl RemoteSource for NoDownloads {
 
 /// Builds synthetic HUD screens and an empty carrier without installed game assets.
 fn engine() -> FormEngine {
-    let files = [
+    let mut files = [
         ("ui/_global_variables.json", "{}"),
         (
             "ui/_ui_defs.json",
@@ -51,6 +51,7 @@ fn engine() -> FormEngine {
         path: path.into(),
         bytes: text.as_bytes().into(),
     });
+    files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
     let page = UiAtlasPage {
         width: 4,
         height: 4,

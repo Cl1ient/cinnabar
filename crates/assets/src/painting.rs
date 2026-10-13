@@ -136,11 +136,8 @@ mod tests {
             assert!(titles.insert(motive.title));
             assert!(motive.size.iter().all(|side| *side > 0 && side % 16 == 0));
             if let Some(origin) = motive.atlas_origin {
-                for axis in 0..2 {
-                    assert!(
-                        u16::from(origin[axis]) + u16::from(motive.size[axis])
-                            <= PAINTING_ATLAS_SIDE
-                    );
+                for (origin, side) in origin.into_iter().zip(motive.size) {
+                    assert!(u16::from(origin) + u16::from(side) <= PAINTING_ATLAS_SIDE);
                 }
             }
         }

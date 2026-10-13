@@ -34,9 +34,9 @@ fn dedicated_painting_ingress_retains_centred_wall_boxes_and_removal() {
         assert_eq!(actor.painting.as_ref().unwrap().motive.as_ref(), "backyard");
         assert_eq!(actor.native_position(), [10.5, 70.5, 20.5]);
         let (low, high) = actor.bounding_box().unwrap();
-        for axis in 0..3 {
-            assert_eq!(low[axis], [10.5, 70.5, 20.5][axis] - expected[axis]);
-            assert_eq!(high[axis], [10.5, 70.5, 20.5][axis] + expected[axis]);
+        for (axis, extent) in expected.into_iter().enumerate() {
+            assert_eq!(low[axis], [10.5, 70.5, 20.5][axis] - extent);
+            assert_eq!(high[axis], [10.5, 70.5, 20.5][axis] + extent);
         }
         assert_eq!(actor.hit_boxes().next(), Some((low, high)));
         assert_eq!(actor.shadow_radius(false), 0.0);

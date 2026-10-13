@@ -109,9 +109,9 @@ fn admitted_paintings_publish_both_surfaces_in_all_wall_directions() {
             assert!(output.skin_layers.is_empty());
             let front = &output.submissions[0];
             let rows = front.world_from_actor;
-            for axis in 0..3 {
-                assert!((-rows[axis][2] - expected_normal[axis]).abs() < 0.00001);
-                assert_eq!(rows[axis][3], [3.5, 70.5, 8.5][axis]);
+            for (axis, row) in rows.into_iter().enumerate() {
+                assert!((-row[2] - expected_normal[axis]).abs() < 0.00001);
+                assert_eq!(row[3], [3.5, 70.5, 8.5][axis]);
             }
             let vertices = render_model::geometry_from_runtime_assets(
                 &pack.assets,

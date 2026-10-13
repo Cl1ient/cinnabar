@@ -5753,6 +5753,8 @@ name = "pack-compiler"
 version = "0.1.17"
 dependencies = [
  "assets",
+ "cap-fs-ext",
+ "cap-std",
  "image",
  "pack-compile-input",
  "pack-json",

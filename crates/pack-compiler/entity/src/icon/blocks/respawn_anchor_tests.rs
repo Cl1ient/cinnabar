@@ -117,7 +117,8 @@ fn world(
     protocol: u32,
 ) -> RuntimeAssets {
     let compiled =
-        crate::compile_pack_with_biomes(root, root, records, &[], lights, protocol).unwrap();
+        pack_compiler::compile_pack_with_biomes(root, root, records, &[], lights, protocol)
+            .unwrap();
     RuntimeAssets::decode(&encode_blob(&compiled).unwrap()).unwrap()
 }
 

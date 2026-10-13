@@ -440,6 +440,7 @@ pub(super) fn read_blocks(path: &Path) -> Result<BlockTextureMap, AssetError> {
     Ok(BlockTextureMap { entries })
 }
 
+#[derive(Clone, Copy)]
 enum Axis {
     X,
     Y,

@@ -82,7 +82,11 @@ fn random_offset_state_authority_drives_mesh_and_overlay_geometry_in_both_id_spa
 fn terrain_override_mips_average_unassociated_leaf_alpha_and_colours() {
     let view = view();
     let mut builder = super::super::Builder {
+        fallback: None,
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
         sources: Vec::new(),
@@ -90,7 +94,7 @@ fn terrain_override_mips_average_unassociated_leaf_alpha_and_colours() {
         tile_size: super::super::MIN_TILE,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
-        textures: Default::default(),
+        slots: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),
         gaps: Default::default(),
@@ -242,8 +246,12 @@ fn overlay_images(
     let view = view();
     super::super::Builder {
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
+        fallback: None,
         sources: images
             .into_iter()
             .map(super::super::Source::Image)
@@ -252,7 +260,7 @@ fn overlay_images(
         tile_size: super::super::MIN_TILE,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
-        textures: Default::default(),
+        slots: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),
         gaps: Default::default(),
@@ -437,7 +445,11 @@ fn terrain_override_subtile_images_use_the_minimum_atlas_pixel_size() {
 fn terrain_page_rejects_over_budget_sources_without_shrinking() {
     let view = view();
     let mut builder = super::super::Builder {
+        fallback: None,
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
         sources: Vec::new(),
@@ -445,7 +457,7 @@ fn terrain_page_rejects_over_budget_sources_without_shrinking() {
         tile_size: super::super::MIN_TILE,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
-        textures: Default::default(),
+        slots: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),
         gaps: Default::default(),

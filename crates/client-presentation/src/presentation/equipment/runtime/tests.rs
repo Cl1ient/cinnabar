@@ -473,7 +473,7 @@ fn session_block_sheets_preserve_material_alpha_modes_for_both_hands() {
         let staged = StagedSessionIcons::stage(Some(&items)).unwrap();
         let (_, locations) = ActorArtworkPages::default().with_equipment_rasters(staged.rasters());
         runtime.set_session_items(Some(&items), Some(staged), locations);
-        for kind in [HeldKind::Other, HeldKind::Sprite] {
+        for kind in [HeldKind::Other, HeldKind::Sprite, HeldKind::Block(7)] {
             item.kind = kind;
             let main = runtime
                 .first_person_item(&body, &item, ItemAnimationState::default())
@@ -487,6 +487,52 @@ fn session_block_sheets_preserve_material_alpha_modes_for_both_hands() {
             );
         }
     }
+}
+
+#[test]
+fn unplaced_session_block_sheets_keep_startup_alpha_modes_for_both_hands() {
+    use client_ui::ui_runtime::presentation::{SessionIcon, SessionIcons};
+
+    let (mut runtime, body, mut item) = block_fixture();
+    item.identifier = Arc::from("test:custom_cube");
+    let main = runtime
+        .first_person_item(&body, &item, ItemAnimationState::default())
+        .unwrap();
+    let off = runtime.first_person_offhand(&body, &item).unwrap();
+    let [width, height] = assets::BLOCK_ITEM_SHEET_SIZE.map(u32::from);
+    let items = crate::session_assets::SessionItems {
+        components: Arc::new(Default::default()),
+        icons: Some(Arc::new(SessionIcons {
+            block_sheets: vec![SessionIcon {
+                identifier: Arc::clone(&item.identifier),
+                metadata: 0,
+                width,
+                height,
+                rgba8: vec![127; (width * height * 4) as usize].into(),
+            }],
+            block_material_flags: BTreeMap::from([(
+                Arc::clone(&item.identifier),
+                assets::MATERIAL_FLAG_ALPHA_BLEND,
+            )]),
+            ..Default::default()
+        })),
+    };
+    let staged = StagedSessionIcons::stage(Some(&items)).unwrap();
+    runtime.set_session_items(Some(&items), Some(staged), Vec::new());
+    let after_main = runtime
+        .first_person_item(&body, &item, ItemAnimationState::default())
+        .unwrap();
+    let after_off = runtime.first_person_offhand(&body, &item).unwrap();
+    assert_eq!(after_main.alpha_mode, main.alpha_mode);
+    assert_eq!(after_off.alpha_mode, off.alpha_mode);
+    assert_eq!(
+        after_main.presentation.submission.input.rig,
+        main.presentation.submission.input.rig
+    );
+    assert_eq!(
+        after_off.presentation.submission.input.rig,
+        off.presentation.submission.input.rig
+    );
 }
 
 #[test]

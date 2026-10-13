@@ -22,6 +22,10 @@ use criterion::{BenchmarkId, Criterion, SamplingMode, criterion_group, criterion
 use protocol::{MovePlayerEvent, PublisherUpdateEvent, WorldEvent};
 use world::{SubChunkKey, chunk_in_view};
 
+#[cfg(feature = "benchmark-mimalloc")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[path = "flight_costs/camera.rs"]
 mod camera;
 
@@ -362,6 +366,8 @@ impl Flight {
         }
         self.stream.set_view_forward([1.0, 0.0, 0.0]);
         black_box(self.stream.poll(camera, MESH_JOBS_PER_FRAME));
+        // This headless fixture has no local physics to advance its retained grid.
+        self.stream.retain_for_server_position();
         while let Some(change) = self.stream.pop_mesh_change() {
             let (key, generation, dirty_since) = match change {
                 WorldMeshChange::Upsert {
@@ -394,7 +400,7 @@ impl Flight {
         elapsed
     }
 
-    /// Times only the server position update that retires the trailing row, then
+    /// Times the server position update and explicit retention of the new grid, then
     /// streams the leading row and settles so every crossing starts from a full view.
     fn cross_one_chunk(&mut self) -> Duration {
         self.center_x += 1;
@@ -402,6 +408,7 @@ impl Flight {
         let position = Ingress::Position(self.server_position());
         let started = Instant::now();
         self.submit(position);
+        self.stream.retain_for_server_position();
         let elapsed = started.elapsed();
         self.publish_view();
         self.enqueue_entering_columns(Some(self.center_x - 1));
@@ -418,7 +425,9 @@ fn flight_benches(c: &mut Criterion) {
     let assets = Arc::new(terrain_assets());
     let mut group = c.benchmark_group("pipeline/flight_main_thread_per_frame");
     group.sampling_mode(SamplingMode::Flat);
-    group.sample_size(10);
+    if !cfg!(feature = "runtime-profile") {
+        group.sample_size(10);
+    }
     group.measurement_time(Duration::from_secs(3));
     for (radius, blocks_per_second) in [
         (10, 0.0_f32),
@@ -479,7 +488,9 @@ fn eviction_benches(c: &mut Criterion) {
     let assets = Arc::new(terrain_assets());
     let mut group = c.benchmark_group("pipeline/row_eviction_on_chunk_crossing");
     group.sampling_mode(SamplingMode::Flat);
-    group.sample_size(10);
+    if !cfg!(feature = "runtime-profile") {
+        group.sample_size(10);
+    }
     group.warm_up_time(Duration::from_millis(100));
     group.measurement_time(Duration::from_millis(300));
     for radius in [10, 16] {

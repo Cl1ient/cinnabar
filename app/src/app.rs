@@ -109,8 +109,8 @@ use {
             flush_server_form_network,
             gameplay_touch::drive_gameplay_touch_targets,
             presentation::{
-                drive_menu_panorama, observe_mount_jump_input, prepare_ui_runtime,
-                publish_ui_runtime,
+                dials::advance_dials, drive_menu_panorama, observe_mount_jump_input,
+                prepare_ui_runtime, publish_ui_runtime,
             },
         },
     },
@@ -140,10 +140,44 @@ const PHYSICS_REGISTRY_GENERATION_GUIDANCE: &str =
 
 mod authority;
 mod executor;
-pub(crate) use authority::{
-    configure_actor_render_systems, configure_client_authority_systems,
-    configure_client_frame_schedule,
-};
+pub(crate) use authority::{configure_client_authority_systems, configure_client_frame_schedule};
+
+/// Registers the production actor observation and publication boundaries.
+pub(crate) fn configure_actor_render_systems(app: &mut App) {
+    app.init_resource::<crate::block_entities::SpawnerDisplayPublisher>()
+        .init_resource::<client_presentation::actor_publication::ActorFrameState>()
+        .add_systems(
+            Update,
+            (
+                advance_actor_frame,
+                crate::runtime::network::publish_local_actor_damage,
+            )
+                .chain()
+                .in_set(ClientFrameSet::ActorPreparation),
+        )
+        // Picks in Interaction and NetworkSend read this frame's remote actor positions.
+        .add_systems(
+            Update,
+            crate::runtime::network::advance_actor_motion
+                .after(ClientFrameSet::Camera)
+                .before(ClientFrameSet::Interaction),
+        )
+        .add_systems(
+            Update,
+            (
+                prepare_actor_render_frame,
+                crate::block_entities::prepare_spawner_actors,
+            )
+                .chain()
+                .in_set(ClientFrameSet::ActorFinalization),
+        )
+        .add_systems(
+            Update,
+            (publish_actor_render_frame, publish_entity_shadows)
+                .chain()
+                .in_set(ClientFrameSet::ActorPublication),
+        );
+}
 
 pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
     #[cfg(not(feature = "acceptance"))]
@@ -238,6 +272,12 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
                 .after(crate::hotbar::flush_hotbar_selection)
                 .after(reconcile_world_stream_before_physics)
                 .before(ClientFrameSet::Physics),
+        )
+        .add_systems(
+            Update,
+            advance_dials
+                .after(ClientFrameSet::Camera)
+                .before(ClientFrameSet::ActorPreparation),
         )
         .add_systems(
             Update,
@@ -445,7 +485,6 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     let mut block_entity_scene =
         crate::block_entities::block_entity_scene(carriers.block_entities.as_deref());
     block_entity_scene.install_entity_assets(&entity_runtime);
-    block_entity_scene.install_mob_assets(&entity_runtime, &actor_catalog);
     let font_runtime = loaded_assets.fonts.into_runtime();
     let block_entity_font = Arc::clone(&font_runtime);
     let font_dir = loaded_assets.selected_path.parent();
@@ -918,7 +957,6 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
 
 #[cfg(test)]
 mod direct_session_directory_tests;
-
 #[cfg(test)]
 mod preg_startup_tests;
 #[cfg(test)]

@@ -212,6 +212,7 @@ fn resolve(
 fn inject(
     driven: Option<Res<DrivenInput>>,
     mut driver: ResMut<Driver>,
+    mut isolation: Option<ResMut<super::cursor_isolation::Isolation>>,
     focus: Res<Messages<WindowFocused>>,
     mut window: Query<(Entity, &mut Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut keys: MessageWriter<KeyboardInput>,
@@ -255,6 +256,9 @@ fn inject(
         match event {
             InputEvent::Pointer(pointer) => {
                 let position = Vec2::new(pointer.x, pointer.y);
+                if let Some(isolation) = isolation.as_deref_mut() {
+                    isolation.set_pointer(position);
+                }
                 let delta = window.cursor_position().map(|previous| position - previous);
                 window
                     .bypass_change_detection()

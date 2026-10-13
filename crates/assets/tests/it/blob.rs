@@ -2,9 +2,9 @@ use std::fs;
 
 use assets::{
     AssetError, BLOB_MAGIC, BLOB_VERSION, BlobProvenance, BlockFlags, BlockVisual, CompiledAssets,
-    CompiledBiomeAssets, MATERIAL_FLAGS_MASK, MAX_MATERIALS, MAX_TEXTURE_LAYERS, MIP_COUNT,
-    Material, NO_ANIMATION, NO_MODEL_TEMPLATE, TILE_SIZE, TextureArray, TextureMip, TexturePage,
-    TextureRef, VisualKind, VisualSupport, encode_blob, write_blob_atomic,
+    CompiledBiomeAssets, MAX_MATERIALS, MAX_TEXTURE_LAYERS, MIP_COUNT, Material, NO_ANIMATION,
+    NO_MODEL_TEMPLATE, TILE_SIZE, TextureArray, TextureMip, TexturePage, TextureRef, VisualKind,
+    VisualSupport, encode_blob, write_blob_atomic,
 };
 use sha2::{Digest, Sha256};
 
@@ -149,7 +149,7 @@ fn world_carrier_exact_bytes() {
     assert_eq!(bytes.len(), 1_576_352);
     assert_eq!(
         format!("{:x}", Sha256::digest(&bytes)),
-        "cc780831dc1653a239c130bdfefe7fcf0b630551288a17f370e79d5ab4ad8fe9",
+        "953376201ef131c55f2f0659c9265572ea94408421440940d0ee3ed39ade7f96",
         "the complete every-table fixture is the byte-exact world carrier golden"
     );
     assert_eq!(read_u32(&bytes, 20), 2);
@@ -952,7 +952,7 @@ fn blob_rejects_material_layer_visual_and_mip_invariants() {
         },
         Material {
             texture: TextureRef::DIAGNOSTIC,
-            flags: MATERIAL_FLAGS_MASK | 0x800,
+            flags: assets::stem::MATERIAL_FLAG | assets::MATERIAL_FLAG_GRASS_TINT,
             animation: NO_ANIMATION,
             ..assets::Material::unvaried()
         },

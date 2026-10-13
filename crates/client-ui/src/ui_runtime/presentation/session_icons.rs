@@ -97,13 +97,8 @@ impl UiPresentationRuntime {
     /// Resolves an item identity to its icon: a server icon for this session
     /// first, then the vanilla atlas. Unknown items keep only the slot frame.
     pub fn item_icon(&self, identifier: &str, metadata: u32) -> Option<IconRef> {
-        if let Some(icon) = self
-            .session_icons
-            .refs
-            .get(identifier)
-            .and_then(|variants| variants.get(&metadata).or_else(|| variants.get(&0)))
-        {
-            return Some(*icon);
+        if let Some(icon) = self.session_item_icon(identifier, metadata) {
+            return Some(icon);
         }
         let vanilla = self
             .icon_catalog
@@ -114,6 +109,15 @@ impl UiPresentationRuntime {
             self.note_missing_icon(identifier, metadata);
         }
         vanilla
+    }
+
+    /// Returns the session override for this item variant, falling back to variant zero.
+    pub(super) fn session_item_icon(&self, identifier: &str, metadata: u32) -> Option<IconRef> {
+        self.session_icons
+            .refs
+            .get(identifier)
+            .and_then(|variants| variants.get(&metadata).or_else(|| variants.get(&0)))
+            .copied()
     }
 
     /// Logs the hotbar's identifiers and icon presence whenever they change.

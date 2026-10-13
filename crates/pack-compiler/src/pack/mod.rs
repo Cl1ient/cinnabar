@@ -1,6 +1,7 @@
 mod block;
 mod fixed_tint;
 mod flipbook;
+mod model_selectors;
 mod parse;
 mod terrain;
 mod variations;
@@ -8,11 +9,13 @@ pub use fixed_tint::{apply_atlas_tint, parse_atlas_tint};
 
 use std::path::Path;
 
-use assets::AssetError;
-
+use assets::{AssetError, texture::flipbook::FlipbookSource};
 pub use block::{BlockTextureMap, TextureKey, resolve_texture_key};
-pub(crate) use block::{resolve_carried_down_key, resolve_carried_face_key};
-pub use flipbook::{DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES, MAX_FLIPBOOKS};
+pub(crate) use block::{
+    has_runtime_cube_face_mapping, resolve_carried_down_key, resolve_carried_face_key,
+    resolve_carried_fallback_key, runtime_binding_identity,
+};
+pub use flipbook::MAX_FLIPBOOKS;
 pub use terrain::TerrainTextureMap;
 
 use block::read_blocks;
@@ -63,3 +66,6 @@ fn validate_block_keys(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod terrain_selector_tests;

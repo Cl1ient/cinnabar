@@ -88,6 +88,52 @@ pub(super) fn bounded_sprite(decoded: crate::image::DecodedTexture) -> Option<(I
     Some((sprite, strip))
 }
 
+/// Most frames baked from one dial strip.
+const MAX_DIAL_FRAMES: u32 = 256;
+
+/// Every frame of the dial strip at `path`, top to bottom. Empty when the pack lacks the strip
+/// or it is not a vertical run of square frames within `MAX_ICON_SIDE`, so the item keeps its
+/// static icon.
+pub(super) fn strip_frames(
+    root: &Path,
+    compiled: &CompiledEntityAssets,
+    path: &str,
+) -> Result<Vec<IconSprite>, AssetError> {
+    let Some(source) = compiled
+        .sources
+        .iter()
+        .find(|source| source.path.as_ref() == path)
+    else {
+        return Ok(Vec::new());
+    };
+    Ok(split_strip(sprite_source(root, source)?))
+}
+
+/// Splits a vertical strip of square frames into one sprite per frame.
+fn split_strip(decoded: crate::image::DecodedTexture) -> Vec<IconSprite> {
+    let side = decoded.width;
+    if side == 0
+        || side > MAX_ICON_SIDE
+        || decoded.height <= side
+        || !decoded.height.is_multiple_of(side)
+        || decoded.height / side > MAX_DIAL_FRAMES
+    {
+        return Vec::new();
+    }
+    let Ok(side16) = u16::try_from(side) else {
+        return Vec::new();
+    };
+    decoded
+        .rgba8
+        .chunks_exact(side as usize * side as usize * 4)
+        .map(|frame| IconSprite {
+            width: side16,
+            height: side16,
+            rgba8: Arc::from(frame),
+        })
+        .collect()
+}
+
 /// Decodes the texture used by a compiled sprite source.
 fn sprite_source(
     root: &Path,
@@ -108,6 +154,31 @@ fn sprite_source(
 #[cfg(test)]
 mod review_tests {
     use super::*;
+
+    #[test]
+    fn dial_strips_split_into_square_frames_in_order() {
+        let side = 2u32;
+        let rgba8: Vec<u8> = (0..3u8)
+            .flat_map(|frame| std::iter::repeat_n(frame, (side * side * 4) as usize))
+            .collect();
+        let frames = split_strip(crate::image::DecodedTexture {
+            width: side,
+            height: side * 3,
+            rgba8: rgba8.into(),
+        });
+        assert_eq!(frames.len(), 3);
+        for (index, frame) in frames.iter().enumerate() {
+            assert_eq!((frame.width, frame.height), (2, 2));
+            assert!(frame.rgba8.iter().all(|&byte| byte == index as u8));
+        }
+        let square = split_strip(crate::image::DecodedTexture {
+            width: side,
+            height: side,
+            rgba8: vec![0; 16].into(),
+        });
+        assert!(square.is_empty(), "a single frame is not a strip");
+    }
+
     #[test]
     fn review_sprite_rereads_reject_changed_source_identity() {
         let root = tempfile::tempdir().unwrap();

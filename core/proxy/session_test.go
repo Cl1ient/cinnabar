@@ -335,8 +335,8 @@ func TestSelectSessionPacksRejectsUnavailableRequiredPacks(t *testing.T) {
 	}
 	first := testAdmissionPack(t)
 	offer, _ := negotiatedOfferUpstream(t, []*resource.Pack{first}, false).ResourcePackOffer()
-	stack, _ := negotiatedOfferUpstream(t, []*resource.Pack{first, second}, false).ResourcePackStack()
 	for _, required := range []bool{false, true} {
+		stack, _ := negotiatedOfferUpstream(t, []*resource.Pack{first, second}, required).ResourcePackStack()
 		selected, _, err := selectSessionPacks(&selectedResourcePackStack{offer: offer, snapshot: stack, required: required}, nil)
 		var admission *PackAdmissionError
 		if required != errors.As(err, &admission) {

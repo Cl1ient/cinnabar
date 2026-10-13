@@ -148,6 +148,8 @@ mod world_ingress;
 pub(crate) use actor_test_support::{actor_render_source, update_actor_render_scene};
 
 mod actor_publication;
+#[cfg(test)]
+pub(crate) use actor_publication::custom_emotes::fixture as actor_publication_test_world;
 mod block_overlay;
 mod bootstrap_timing;
 pub(crate) mod entity_pack;

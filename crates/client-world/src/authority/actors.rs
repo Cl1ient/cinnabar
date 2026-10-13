@@ -17,6 +17,11 @@ impl WorldAuthority {
         self.actors
             .render_players(Some(self.local_player_runtime_id))
     }
+    /// Remote non-spectator players, including those whose appearance is still preparing.
+    pub fn present_remote_players(&self) -> impl Iterator<Item = &ActorSnapshot> {
+        self.actors
+            .present_players(Some(self.local_player_runtime_id))
+    }
     /// Returns the retained display name for an actor identity.
     pub fn actor_display_name(&self, unique_id: i64) -> Option<std::sync::Arc<str>> {
         self.actors.actor_display_name(unique_id)

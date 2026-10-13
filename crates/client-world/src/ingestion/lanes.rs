@@ -254,6 +254,7 @@ fn classify_event(event: &WorldEvent, context: LaneContext) -> Footprint {
         WorldEvent::MovementEffect(_) => Footprint::session(C::NONE),
         WorldEvent::DimensionChangeAck { .. }
         | WorldEvent::SetTime(_)
+        | WorldEvent::WorldSpawn(_)
         | WorldEvent::WorldClocks(_)
         | WorldEvent::Weather(_) => Footprint::session(C::CONTROLS),
         WorldEvent::GameRules(_) => Footprint::session(C::CONTROLS.with(C::UI)),

@@ -11,6 +11,11 @@ mapping and an original-art GPU fixture. This bounded geometry correction leaves
 exhaustive residual-family, world-join and hardware performance gates open.
 
 Common farmland crops now retain four lowered rows with stage-specific artwork.
+Fruit stems retain growth height, stage colour and facing-oriented connectors;
+pitcher crops retain pods and separate flower halves; torchflowers retain their
+stage artwork at the plant width. Berry bushes retain their growth-stage artwork
+and narrower sprite geometry. Exact native-client crop comparison,
+sub-unit geometry and atlas-edge UV calibration remain incomplete.
 Compiler regressions cover all eight growth states and both network-ID modes;
 full crop presentation parity and the broader phase gates remain open.
 
@@ -295,6 +300,18 @@ gate is closed by the ownership change.
 ## Session biome climate and environment
 
 Admitted live biome identifiers and climate now travel with the session tint registry. Weather, fog precipitation, camera temperature and environment routes read that registry, including custom biome routes. Registry replacement clears removed routes. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+
+## Spawner display actors
+
+Spawner displays now use client-owned actor lifetimes and the ordinary actor
+evaluator, render controllers, sampled poses and active pack artwork. Configured
+entities no longer depend on a fixed mob list. Displays retire when the block or
+world changes, and pack replacement rebinds existing lifetimes.
+
+Incomplete parity: display factory metadata defaults, exact native renderer bounds,
+activation edge cases and the full entity gallery are unverified. Frame and GPU
+budgets remain open; these changes do not close those acceptance gates.
 
 ## Protocol session layer
 

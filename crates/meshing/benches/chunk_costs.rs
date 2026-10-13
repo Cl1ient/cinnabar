@@ -15,6 +15,10 @@ use world::{
     BiomeStorage, DecodedBiomeColumn, MeshNeighbourhood, RawBiomeIds, RawBlockIds, SubChunk,
 };
 
+#[cfg(feature = "benchmark-mimalloc")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 const AIR: u32 = 0;
 const MODE: NetworkIdMode = NetworkIdMode::Sequential;
 const OFFSETS: [[i8; 3]; 6] = [

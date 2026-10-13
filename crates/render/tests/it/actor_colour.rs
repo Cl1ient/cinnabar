@@ -560,10 +560,9 @@ fn render_cases(gpu: &Gpu, cases: Vec<Case>) {
         );
     // Test-only resource remapping lets the shared single-group readback helper run
     // production actor_fragment unchanged, including its actual imported helpers.
-    let actor = shader_source::standalone(&actor, &[])
+    let source = shader_source::standalone(&format!("{actor}\n{VERTEX}"), &[])
         .replace("@group(1) @binding(0)", "@group(0) @binding(20)")
         .replace("@group(1) @binding(1)", "@group(0) @binding(21)");
-    let source = format!("{actor}\n{VERTEX}");
     let view = gpu.buffer(
         &gpu_snapshot::view(bevy::math::Mat4::IDENTITY, bevy::math::Vec3::ZERO),
         wgpu::BufferUsages::UNIFORM,

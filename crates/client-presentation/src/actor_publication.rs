@@ -219,6 +219,7 @@ pub fn prepare_actor_render_frame(
             combat_visuals: state.combat_visuals,
             local_emote_pose: bodies.local_emote_pose.as_ref(),
             native_body_sampled: bodies.native_body_sampled,
+            remote_skin_layers: &bodies.remote_skin_layers,
             native_pose: &state.java_hand.native_pose,
         },
         layers::LayerCaches {
@@ -254,7 +255,10 @@ pub fn prepare_actor_render_frame(
         step.partial_tick,
         visibility,
         local_visible,
-        bodies.local_runtime_id,
+        (
+            stream.map(|stream| stream.authority().actor_session_id()),
+            bodies.local_runtime_id,
+        ),
         selected_count,
         bodies.unrigged_actors,
     ));

@@ -16,7 +16,8 @@ use {
     client_presentation::actor_publication::{ActorFramePartialTick, HandRigBuilder},
 };
 
-pub(super) fn fixture() -> World {
+/// Supplies the detached production actor schedule with its required resources.
+pub(crate) fn fixture() -> World {
     fixture_with_skin(false)
 }
 
@@ -138,6 +139,19 @@ fn fixture_with_skin(with_skin: bool) -> World {
     world.insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
         1,
     )));
+    let bytes = assets::pinned_block_registry_bytes();
+    let version = assets::active_content_registry_protocol();
+    let records = assets::read_registry_for_protocol(bytes, version).unwrap();
+    world.insert_resource(
+        client_interaction::movement::PhysicsCollisionRegistries::from_assets(
+            bytes,
+            &records,
+            include_bytes!("../../../../../../crates/assets/data/block-physics-v2193.bin"),
+            version,
+        )
+        .unwrap(),
+    );
+    world.init_resource::<crate::block_entities::SpawnerDisplayPublisher>();
     world.insert_resource(client);
     world.insert_resource(Time::<Real>::default());
     world.insert_resource(
@@ -552,3 +566,11 @@ fn production_early_ui_readiness_matches_the_current_hand_source() {
 mod local_torso;
 #[path = "custom_emotes/pick_positions.rs"]
 mod pick_positions;
+
+#[test]
+fn regression_detached_actor_fixture_runs_display_preparation() {
+    let mut world = fixture();
+    world
+        .run_system_cached(crate::block_entities::prepare_spawner_actors)
+        .unwrap();
+}

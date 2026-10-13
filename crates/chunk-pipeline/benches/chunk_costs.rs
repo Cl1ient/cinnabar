@@ -357,8 +357,13 @@ fn cohort_benches(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(not(feature = "runtime-profile"))]
 #[global_allocator]
 static ALLOCATOR: test_alloc::CountingAllocator = test_alloc::CountingAllocator;
+
+#[cfg(feature = "benchmark-mimalloc")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[path = "chunk_costs/dispatch.rs"]
 mod dispatch;

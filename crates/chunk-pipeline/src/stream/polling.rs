@@ -95,6 +95,7 @@ impl WorldStream {
         self.apply_ready();
         self.promote_deferred_ingress();
         self.expire_sub_chunk_deadlines(Instant::now());
+        self.request_due_sub_chunk_recoveries(Instant::now());
         self.pump_deferred_retries();
         self.dispatch_decode_jobs();
 
@@ -316,13 +317,16 @@ impl WorldStream {
             block[2].rem_euclid(16) as u8,
         )
     }
+    /// The render distance in blocks: the player's requested radius, whatever the server grants,
+    /// or the server's until the player has asked.
     #[must_use]
     #[expect(
         clippy::cast_precision_loss,
         reason = "the committed stream radius is bounded to sixteen chunks"
     )]
     pub fn render_distance_blocks(&self) -> f32 {
-        self.chunk_radius
+        self.requested_radius
+            .or(self.chunk_radius)
             .unwrap_or_else(|| self.active_radius_chunks())
             .clamp(0, MAX_VIEW_RADIUS_CHUNKS)
             .saturating_mul(16) as f32

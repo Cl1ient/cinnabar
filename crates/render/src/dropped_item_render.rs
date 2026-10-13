@@ -50,7 +50,7 @@ use bevy::{
 };
 use model_upload::PreparedModels;
 #[cfg(test)]
-use model_upload::{build_model, model_side};
+use model_upload::build_model;
 #[cfg(test)]
 use render_model::DroppedItemModel;
 use std::ops::Range;
@@ -153,6 +153,8 @@ struct ItemGpu {
     _atlas: Option<Texture>,
     atlas_view: Option<TextureView>,
     models_revision: u64,
+    /// Current model slots given priority during the last resource rebuild.
+    prioritized_models: Vec<bool>,
     dynamic_count: u32,
     /// Instance slot holding the identity transform used for dynamic geometry.
     identity_instance: u32,
@@ -169,6 +171,8 @@ struct ItemMeshRange {
     vertices: Range<u32>,
     cull_back: bool,
     bounds: Option<DroppedItemBounds>,
+    /// Valid geometry that fits alone but lost admission to other meshes.
+    capacity_rejected: bool,
 }
 
 /// One ordered draw, including the cull mode allowed by its model and transform.
@@ -235,6 +239,7 @@ fn init_gpu(mut commands: Commands, device: Res<RenderDevice>) {
         _atlas: None,
         atlas_view: None,
         models_revision: u64::MAX,
+        prioritized_models: Vec::new(),
         dynamic_count: 0,
         identity_instance: 0,
         draws: Vec::new(),
@@ -245,8 +250,10 @@ fn init_gpu(mut commands: Commands, device: Res<RenderDevice>) {
     });
 }
 
+/// Uploads current models before cached extras while keeping model handles unchanged.
 fn rebuild_models(
     scene: &DroppedItemScene,
+    current: &[bool],
     device: &RenderDevice,
     queue: &RenderQueue,
     gpu: &mut ItemGpu,
@@ -267,6 +274,7 @@ fn rebuild_models(
         ranges,
     } = PreparedModels::new(
         &scene.models,
+        current,
         policy,
         device.limits().max_texture_array_layers,
         device.limits().max_buffer_size,
@@ -307,7 +315,24 @@ fn rebuild_models(
     }));
     gpu._atlas = Some(texture);
     gpu.models_revision = scene.models_revision;
+    gpu.prioritized_models = current.to_vec();
     gpu.bind_group = None;
+}
+
+/// Marks current instance models, including retained terrain candidates, at stable model slots.
+fn current_models(scene: &DroppedItemScene) -> Vec<bool> {
+    let mut current = vec![false; scene.models.len()];
+    for instance in scene.instances.iter().chain(
+        scene
+            .terrain_instances
+            .iter()
+            .map(|candidate| &candidate.instance),
+    ) {
+        if let Some(required) = current.get_mut(instance.model as usize) {
+            *required = true;
+        }
+    }
+    current
 }
 
 fn prepare_items(
@@ -317,8 +342,18 @@ fn prepare_items(
     queue: Res<RenderQueue>,
     mut gpu: ResMut<ItemGpu>,
 ) {
-    if gpu.models_revision != scene.models_revision || gpu.atlas_view.is_none() {
-        rebuild_models(&scene, &device, &queue, &mut gpu);
+    let current = current_models(&scene);
+    let priority_changed = current != gpu.prioritized_models;
+    let missing_current = current.iter().enumerate().any(|(slot, &required)| {
+        required
+            && gpu.ranges.get(slot).is_none_or(|range| {
+                range.vertices.is_empty()
+                    && (!gpu.prioritized_models.get(slot).copied().unwrap_or(false)
+                        || (priority_changed && range.capacity_rejected))
+            })
+    });
+    if gpu.models_revision != scene.models_revision || gpu.atlas_view.is_none() || missing_current {
+        rebuild_models(&scene, &current, &device, &queue, &mut gpu);
     }
     glint::upload(&scene, &device, &queue, &mut gpu);
     if scene.instances.is_empty()
@@ -876,6 +911,10 @@ impl crate::pipeline_warmup::PrewarmPipelines for ItemPipeline {
 #[cfg(test)]
 #[path = "dropped_item_render/upload_tests.rs"]
 mod upload_tests;
+
+#[cfg(test)]
+#[path = "dropped_item_render/priority_tests.rs"]
+mod priority_tests;
 
 #[cfg(test)]
 #[path = "dropped_item_render/pipeline_tests.rs"]

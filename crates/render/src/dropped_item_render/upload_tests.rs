@@ -6,7 +6,7 @@ use std::sync::Arc;
 use {render_model::ItemMeshVertex, render_scene::DroppedItemScene};
 
 /// Initializes item resources on the CPU-only backend for deterministic preparation tests.
-fn item_world() -> World {
+pub(super) fn item_world() -> World {
     let (device, queue) = wgpu::Device::noop(&Default::default());
     let mut world = World::new();
     world.insert_resource(RenderDevice::from(device));
@@ -60,14 +60,12 @@ fn potted_block_artwork_keeps_its_resolution_and_alpha() {
     assert_eq!(&atlas[(side * side * 4) as usize..], &pixels);
     assert!(mesh.iter().any(|vertex| vertex.uv == [1.0, 1.0]));
     assert_eq!(
-        model_side(
-            &DroppedItemModel::Sprite(render_model::DroppedItemSprite {
-                width: 16,
-                height: 16,
-                rgba8: Arc::from([255; 16 * 16 * 4])
-            }),
-            assets::texture::policy::device_policy()
-        ),
+        DroppedItemModel::Sprite(render_model::DroppedItemSprite {
+            width: 16,
+            height: 16,
+            rgba8: Arc::from([255; 16 * 16 * 4])
+        })
+        .atlas_side(assets::texture::policy::device_policy()),
         Some(render_model::MIN_ITEM_ATLAS_SIDE)
     );
 }
@@ -85,7 +83,7 @@ fn hd_dropped_sprites_keep_their_source_pixels_and_physical_extent() {
         rgba8: Arc::from(pixels.clone()),
     });
     assert_eq!(
-        model_side(&model, assets::texture::policy::device_policy()),
+        model.atlas_side(assets::texture::policy::device_policy()),
         Some(width)
     );
     let mut atlas = vec![255; (width * width * 4) as usize];
@@ -271,12 +269,14 @@ fn enlarging_an_admitted_atlas_keeps_earlier_uvs_glint_and_texture_layers() {
     });
     let original = PreparedModels::new(
         &models[..1],
+        &[],
         assets::texture::policy::device_policy(),
         render_model::MAX_ITEM_LAYERS as u32,
         assets::texture::policy::MAX_SUBSCRIBER_BYTES as u64,
     );
     let prepared = PreparedModels::new(
         &models,
+        &[],
         assets::texture::policy::device_policy(),
         render_model::MAX_ITEM_LAYERS as u32,
         assets::texture::policy::MAX_SUBSCRIBER_BYTES as u64,
@@ -326,6 +326,7 @@ fn buffer_rejection_cannot_enlarge_already_admitted_texture_layers() {
     });
     let prepared = PreparedModels::new(
         &models,
+        &[],
         assets::texture::policy::device_policy(),
         render_model::MAX_ITEM_LAYERS as u32,
         (4096 * ITEM_MESH_VERTEX_BYTES) as u64,

@@ -58,6 +58,8 @@ mod synchronized_audio_tests;
 mod terrain;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod world_spawn_tests;
 pub use biomes::BiomeCommitReport;
 pub use block_events::BlockEventCue;
 pub use combat::{ActorCombatEvidence, ActorCombatKind};
@@ -73,6 +75,15 @@ pub use sign_edit::SignEditRequest;
 
 static NEXT_BIOME_TINT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_ACTOR_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Allocates a distinct lifetime namespace for network and client-owned actor stores.
+pub(crate) fn allocate_actor_session_id() -> u64 {
+    NEXT_ACTOR_SESSION_ID
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("actor session identity space exhausted")
+}
 pub const COMMITTED_CONTROL_CAPACITY: usize = MAX_ADMITTED_WORLD_EVENTS;
 pub const COMMITTED_UI_CAPACITY: usize = MAX_ADMITTED_WORLD_EVENTS;
 pub const COMMITTED_AUDIO_CAPACITY: usize = MAX_ADMITTED_WORLD_EVENTS;
@@ -103,6 +114,8 @@ pub struct WorldAuthority {
     biome_tint_stream_id: u64,
     biome_tint_revision: u64,
     current_dimension: i32,
+    /// The level's default spawn, which compasses point at.
+    world_spawn: [i32; 3],
     dimension_ranges: std::collections::BTreeMap<i32, (Arc<str>, DimensionRange)>,
     frozen_dimension_ranges: BTreeSet<i32>,
     dimension_range_skips: u64,
@@ -143,11 +156,7 @@ impl WorldAuthority {
                 current.checked_add(1)
             })
             .expect("biome tint stream identity space exhausted");
-        let actor_session_id = NEXT_ACTOR_SESSION_ID
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                current.checked_add(1)
-            })
-            .expect("actor session identity space exhausted");
+        let actor_session_id = allocate_actor_session_id();
         let network_id_mode = if bootstrap.block_network_ids_are_hashes {
             NetworkIdMode::Hashed
         } else {
@@ -185,6 +194,7 @@ impl WorldAuthority {
             biome_tint_stream_id,
             biome_tint_revision: 0,
             current_dimension: bootstrap.dimension,
+            world_spawn: bootstrap.world_spawn_position,
             dimension_ranges: std::collections::BTreeMap::new(),
             frozen_dimension_ranges: BTreeSet::new(),
             dimension_range_skips: 0,

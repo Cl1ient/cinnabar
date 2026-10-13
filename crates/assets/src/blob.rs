@@ -26,8 +26,9 @@ use crate::{
 };
 
 // World visuals retain solid/liquid material dispositions, and replicated flipbook tiles hold
-// their native upper-left crop; reject earlier carriers.
-pub const BLOB_VERSION: u32 = 17;
+// their native upper-left crop. Model texture arrays require explicit state selectors;
+// reject earlier carriers that omit those selectors.
+pub const BLOB_VERSION: u32 = 18;
 pub const BLOB_MAGIC: [u8; 8] = {
     let mut magic = *b"MCBEAS00";
     magic[6] += (BLOB_VERSION / 10) as u8;
@@ -635,7 +636,10 @@ pub(crate) fn compiled_compound_tails(
     Ok(tails)
 }
 
-fn compiled_stair_bases(templates: &[crate::ModelTemplate]) -> Result<Vec<usize>, AssetError> {
+/// Validates stair topology groups and returns each group's first template.
+pub(crate) fn compiled_stair_bases(
+    templates: &[crate::ModelTemplate],
+) -> Result<Vec<usize>, AssetError> {
     let mut bases = Vec::new();
     let mut index = 0;
     while index < templates.len() {
@@ -658,7 +662,8 @@ fn compiled_stair_bases(templates: &[crate::ModelTemplate]) -> Result<Vec<usize>
     Ok(bases)
 }
 
-fn compiled_connected_bases(
+/// Validates connected topology groups and returns their first templates and flags.
+pub(crate) fn compiled_connected_bases(
     templates: &[crate::ModelTemplate],
 ) -> Result<Vec<(usize, u32)>, AssetError> {
     let mut bases = Vec::new();

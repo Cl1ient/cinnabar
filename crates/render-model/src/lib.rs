@@ -59,9 +59,10 @@ pub use frame_pacing::{
 };
 pub use item_geometry::{extruded_sprite_vertices, held_sprite_vertices, textured_cube_vertices};
 pub use nametag::{
-    MAX_NAMETAG_RECORDS, NAMETAG_ATLAS_SIDE, NAMETAG_BLOCKS_PER_FONT_PIXEL, NAMETAG_LINE_PITCH_PX,
-    NAMETAG_TEXT_REVERSE_Z_BIAS, NametagAtlasRect, NametagRecord, NametagScene,
-    nametag_line_backgrounds, nametag_line_left,
+    MAX_NAMETAG_RECORDS, NAMETAG_ALPHA_CUTOFF, NAMETAG_ATLAS_SIDE, NAMETAG_BLOCKS_PER_FONT_PIXEL,
+    NAMETAG_DIM_TEXT_ALPHA, NAMETAG_LINE_PITCH_PX, NAMETAG_TEXT_REVERSE_Z_BIAS, NametagAtlasRect,
+    NametagRecord, NametagScene, java_nametag_line_backgrounds, nametag_line_backgrounds,
+    nametag_line_left,
 };
 pub use panorama::{MAX_PANORAMA_FACE_SIDE, PanoramaFaces, PanoramaView};
 pub use presentation::{
@@ -143,6 +144,7 @@ pub mod hand;
 pub mod lightmap;
 
 pub mod native_trig;
+pub mod spawner;
 pub mod viewmodel;
 pub mod weather;
 pub use actor::ActorRigVertexSegments;
@@ -168,9 +170,7 @@ pub use block_entity::BeaconModel;
 pub use block_entity::ConduitModel;
 pub use block_entity::CrystalBeamModel;
 pub use block_entity::DragonDeathModel;
-pub use block_entity::SPAWNER_MOBS;
 pub use block_entity::ShulkerModel;
-pub use block_entity::SpawnerModel;
 pub use block_entity::{
     AtlasRect, BlockEntityAtlas, MAP_CELL, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef,
 };
@@ -186,7 +186,7 @@ pub use block_entity::{
 };
 pub use block_entity::{BannerLayer, BannerModel, BannerMount};
 pub use block_entity::{BedModel, bed_color};
-pub use block_entity::{BellAttachment, BellModel, swing_degrees};
+pub use block_entity::{BellAttachment, BellModel, BookPose, EnchantingBook, swing_degrees};
 pub use block_entity::{BlockEntityArtworkPreparer, PreparedBlockEntityArtwork};
 pub use block_entity::{ChestModel, ChestPair, ChestVariant, CopperAge, lid_angle_radians};
 pub use block_entity::{CrackQuad, CrackShape, crack_shape_from_template, crack_texture_name};

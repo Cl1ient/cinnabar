@@ -518,6 +518,7 @@ pub(super) fn hand_source(
             equipment,
             progress,
             &mut cache.native_pose,
+            true,
         )?;
         let map = |item: &WornItem| &*item.identifier == FILLED_MAP;
         if main.as_ref().is_some_and(|item| !map(item))
@@ -587,7 +588,7 @@ pub(super) fn hand_source(
         };
         Some((bones, java::first_person_arm(hand.swing, hand.equip)))
     });
-    let (body, java_body_camera) = match arm.flatten() {
+    let (body, body_camera) = match arm.flatten() {
         Some((bones, camera)) => {
             let mut posed = inputs.presentation.submission.clone();
             posed.input.previous_bones = Arc::clone(&bones);
@@ -606,7 +607,7 @@ pub(super) fn hand_source(
         items: [main_layer, off_layer],
         item_glint: inputs.artwork.item_glint.clone(),
         motion,
-        java_body_camera,
+        body_camera,
     })
 }
 

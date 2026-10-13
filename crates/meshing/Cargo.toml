@@ -18,7 +18,11 @@ assets = { path = "../assets" }
 bytemuck = { version = "1", features = ["derive"] }
 world = { path = "../world" }
 
+[features]
+benchmark-mimalloc = []
+
 [dev-dependencies]
+mimalloc.workspace = true
 criterion.workspace = true
 pack-compiler = { path = "../pack-compiler" }
 image.workspace = true

@@ -43,6 +43,24 @@ pub struct ActorFrameState {
 }
 
 impl ActorFrameState {
+    /// Shares the exact accepted artwork snapshot with client-owned actor publishers.
+    pub fn actor_artwork<'a>(
+        &'a self,
+        startup: &'a render_model::ActorArtworkPages,
+    ) -> &'a render_model::ActorArtworkPages {
+        self.session_artwork.as_ref().unwrap_or(startup)
+    }
+
+    /// Returns the clock step used to evaluate and publish every actor in this frame.
+    pub fn frame_step(&self) -> Option<crate::actor_clock::ActorFrameStep> {
+        self.step
+    }
+
+    /// Returns the resolved camera rotation and position captured for actor evaluation.
+    pub fn sampling_camera(&self) -> Option<([f32; 2], [f32; 3])> {
+        self.captured_sampling_camera
+    }
+
     /// Whether the current captured first-person source will pass hand-frame validation.
     pub fn hand_is_active(&self) -> bool {
         self.hand_ready

@@ -524,3 +524,21 @@ fn old_epoch_messages_are_dropped_and_counted_while_sequences_continue() {
         assert_eq!((receiver.ingress.stale, receiver.ingress.skipped), (2, 0));
     }
 }
+
+#[test]
+fn boolean_fields_reject_unknown_members_at_every_depth() {
+    let field: Field = serde_json::from_str(r#"{"type":"bool"}"#).unwrap();
+    assert!(matches!(field, Field::Bool {}));
+    assert_eq!(serde_json::to_string(&field).unwrap(), r#"{"type":"bool"}"#);
+    for document in [
+        r#"{"type":"bool","extra":true}"#,
+        r#"{"type":"bool","type":"bool"}"#,
+        r#"{"type":"list","max_items":1,"item":{"type":"bool","extra":true}}"#,
+        r#"{"type":"record","fields":[{"type":"bool","extra":true}]}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<Field>(document).is_err(),
+            "{document}"
+        );
+    }
+}

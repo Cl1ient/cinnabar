@@ -105,14 +105,17 @@ fn beacons_are_prepared_from_hidden_sections() {
     );
 }
 
-/// Installed spawner geometry can extend beyond the authored block reach.
+/// Installed skull geometry can extend beyond the authored block reach.
 #[test]
 fn unbounded_pack_geometry_is_prepared_even_in_hidden_sections() {
     let cave = cave();
     let culling = CaveCulling::new(&cave, key(0, 4, 0), GENERATION, |_: SubChunkKey| true);
-    let template = Template::Static(render_model::BlockEntityKind::Spawner(
-        render_model::SpawnerModel {
-            mob: std::sync::Arc::from("minecraft:zombie"),
+    let template = Template::Static(render_model::BlockEntityKind::Skull(
+        render_model::SkullModel {
+            kind: render_model::SkullKind::Dragon,
+            mount: render_model::SkullMount::Floor {
+                rotation_degrees: 0.0,
+            },
         },
     ));
     let mut work = BlockEntityWork::default();

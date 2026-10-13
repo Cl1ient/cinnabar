@@ -81,8 +81,30 @@ pub(crate) fn glint_tint_source() -> String {
     format!("vec3<f32>({red:?}, {green:?}, {blue:?})")
 }
 
+/// Generates stem colours from the same bounded material contract as the compiler.
+fn stem_colours_source() -> String {
+    let colours = (0..=7)
+        .map(|growth| {
+            let rgb = assets::stem::colour(growth).expect("bounded stem growth");
+            format!(
+                "vec3<f32>({}, {}, {}) / 255.0",
+                rgb[0] as f32, rgb[1] as f32, rgb[2] as f32
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "const STEM_COLOURS: array<vec3<f32>, 8> = array({colours});\nfn stem_colour(flags: u32) -> vec3<f32> {{\n if ((flags & {}u) == 0u) {{ return vec3(1.0); }}\n return STEM_COLOURS[(flags & {}u) >> {}u];\n}}",
+        assets::stem::MATERIAL_FLAG,
+        assets::stem::GROWTH_MASK,
+        assets::stem::GROWTH_SHIFT,
+    )
+}
+
 pub(crate) fn source(source: &str) -> String {
     source
+        .replace("// STEM_COLOURS", &stem_colours_source())
+        .replace("MATERIAL_STEM_FLAG", &format!("{}u", assets::stem::MATERIAL_FLAG))
         .replace("ITEM_GLINT_UV_SCALE", &format!("{:?}", render_model::ITEM_GLINT_UV_SCALE))
         .replace("GLINT_TINT_RGB", &glint_tint_source())
         .replace("ACTOR_LIGHT_WORLD_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_WORLD))
@@ -93,6 +115,7 @@ pub(crate) fn source(source: &str) -> String {
         .replace("TERRAIN_QUAD_SHIFT_MASK", &format!("{}u", assets::TERRAIN_QUAD_SHIFT_MASK))
         .replace("GPU_TEXTURE_WIDTH_SHIFT", &format!("{TEXTURE_WIDTH_SHIFT}u"))
         .replace("GPU_TEXTURE_HEIGHT_SHIFT", &format!("{TEXTURE_HEIGHT_SHIFT}u"))
+        .replace("BLOCK_ENTITY_CULL_BACK_FACES", &format!("{}u", render_model::block_entity::mesh::BLOCK_ENTITY_CULL_BACK_FACES))
         .replace("BLOCK_OVERLAY_FACE_OFFSET", &format!("{:?}", render_api::BLOCK_OVERLAY_FACE_OFFSET))
         .replace("ACTOR_COLOR_MASK_MATERIAL_FLAG", &format!("{}u", render_model::ACTOR_COLOR_MASK_MATERIAL_FLAG))
         .replace("ACTOR_MATERIAL_LEGACY112_FLAG", &format!("{}u", render_model::LEGACY_COMBAT_MATERIAL_FLAG))

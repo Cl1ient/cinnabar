@@ -14,7 +14,7 @@ fn compile_block_overlay(
     view: &LayeredPackView,
     blocks: &CustomBlocks,
     hashed: bool,
-    keys: Option<&assets::MaterialKeys>,
+    keys: Option<&assets::material_keys::MaterialKeys>,
 ) -> Option<super::CompiledBlockOverlay> {
     super::compile_block_overlay(
         view,
@@ -22,19 +22,23 @@ fn compile_block_overlay(
         hashed,
         keys,
         assets::MAX_TEXTURE_LAYERS as u32,
+        None,
     )
 }
 
 mod budget;
 mod builtins;
 mod capacity;
+mod flipbooks;
 mod hd_textures;
 mod legacy;
 mod lighting;
 mod random_offset;
 mod session;
 mod texture_budget;
+mod vanilla_terrain;
 
+mod vanilla_fallback;
 mod vines;
 
 fn png(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
@@ -121,18 +125,18 @@ fn terrain_replacement_applies_literal_atlas_tint_once_and_keeps_alpha() {
         r##"{"texture_data":{"lucky":{"textures":[{"path":"textures/blocks/lucky","tint_color":"#ff80ff"}]}}}"##,
     );
     let catalog = super::textures::TextureCatalog::new(&view, None);
-    let image = catalog.decode("lucky").unwrap();
+    let image = catalog.decode_choice("lucky", 0, 0).unwrap();
     assert_eq!(&image.rgba8[..4], &[0, 100, 0, 255]);
 }
 
 #[test]
 fn raster_only_replacement_retains_the_base_lily_tint() {
     let view = view_with_catalog(GEOMETRY.as_bytes(), r#"{"texture_data":{}}"#);
-    let keys = assets::MaterialKeys::from_entries([(1, "pad")])
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "pad")])
         .with_aliases([("pad", "textures/blocks/lucky")])
         .with_fixed_tints([("pad", [32, 128, 48])]);
     let catalog = super::textures::TextureCatalog::new(&view, Some(&keys));
-    let image = catalog.decode("pad").unwrap();
+    let image = catalog.decode_choice("pad", 0, 0).unwrap();
     assert_eq!(&image.rgba8[..4], &[0, 100, 0, 255]);
     let compiled =
         compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys)).unwrap();
@@ -637,25 +641,35 @@ fn bone_visibility_hides_bones_per_state() {
 // Flipbook framing is bounded before copies are cut and each frame is shrunk.
 #[test]
 fn flipbook_frames_are_capped_and_shrunk() {
-    use super::textures::{Flipbook, flipbook_frames, shrink_to_max};
+    use super::textures::{flipbook_frames, shrink_to_max};
+    use assets::texture::flipbook::FlipbookSource;
     use pack_runtime::pack_textures::DecodedTexture;
     let strip = DecodedTexture {
         width: 64,
         height: 64 * 8,
-        rgba8: vec![7; (64 * 64 * 8 * 4) as usize].into_boxed_slice(),
+        rgba8: (0..64 * 64 * 8)
+            .flat_map(|pixel| [(pixel / (64 * 64)) as u8; 4])
+            .collect(),
     };
-    let flipbook = Flipbook {
-        frames: None,
-        ticks_per_frame: 1,
-        blend: true,
-    };
+    let flipbook: FlipbookSource = serde_json::from_value(serde_json::json!({
+        "flipbook_texture": "textures/fixture", "atlas_tile": "fixture"
+    }))
+    .unwrap();
     let frames = flipbook_frames(&strip, &flipbook, 3, 32);
-    assert_eq!(frames.len(), 3, "frame count capped to the budget");
+    assert_eq!(
+        frames.frames.len(),
+        3,
+        "physical frame count capped to the budget"
+    );
+    assert_eq!(frames.timeline.len(), 3);
     assert!(
-        frames.iter().all(|f| f.width == 32 && f.height == 32),
+        frames
+            .frames
+            .iter()
+            .all(|f| f.width == 32 && f.height == 32),
         "frames shrunk to max side"
     );
-    assert!(flipbook_frames(&strip, &flipbook, 0, 32).is_empty());
+    assert!(flipbook_frames(&strip, &flipbook, 0, 32).frames.is_empty());
 
     let big = DecodedTexture {
         width: 256,
@@ -749,7 +763,11 @@ fn hashed_mode_emits_a_visual_and_hash_per_state() {
 // A pack redefining a vanilla terrain key repoints that key's base materials; unknown keys are ignored.
 #[test]
 fn vanilla_terrain_keys_override_base_materials() {
-    let keys = assets::MaterialKeys::from_entries([(5, "lucky"), (6, "gen"), (7, "not_in_pack")]);
+    let keys = assets::material_keys::MaterialKeys::from_entries([
+        (5, "lucky"),
+        (6, "gen"),
+        (7, "not_in_pack"),
+    ]);
     let empty = CustomBlocks::default();
     let compiled = compile_block_overlay(&view(), &empty, false, Some(&keys)).expect("overrides");
     let mut materials = compiled

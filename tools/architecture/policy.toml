@@ -72,6 +72,7 @@ test_support_features = ["test-support"]
 [[crates]]
 name = "world"
 path = "crates/world"
+test_support_features = ["runtime-profile", "benchmark-mimalloc"]
 allowed_dependencies = []
 forbidden_dependencies = ["asset-compiler", "assets", "bevy", "wgpu"]
 
@@ -98,6 +99,7 @@ forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 [[crates]]
 name = "meshing"
 path = "crates/meshing"
+test_support_features = ["benchmark-mimalloc"]
 allowed_dependencies = ["assets", "block-transform", "world"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 
@@ -133,7 +135,7 @@ test_support_features = ["test-support"]
 [[crates]]
 name = "chunk-pipeline"
 path = "crates/chunk-pipeline"
-test_support_features = ["publication-test-support", "benchmark-support"]
+test_support_features = ["publication-test-support", "benchmark-support", "runtime-profile", "benchmark-mimalloc"]
 allowed_dependencies = ["simulation-clock", "actor-animation", "client-world", "meshing", "assets", "world", "render-api", "test-time"]
 # Protocol is permitted only in fixtures; production consumes client-world's admitted contracts.
 forbidden_dependencies = ["asset-compiler", "pack-compiler", "protocol", "bevy", "wgpu"]
@@ -329,7 +331,7 @@ forbidden_transitive_dependencies = ["client-world", "chunk-pipeline", "protocol
 [[crates]]
 name = "app"
 path = "app"
-allowed_dependencies = ["pack-json", "env-compat", "simulation-clock", "actor-animation", "render-scene", "client-shell", "client-interaction", "client-runtime", "client-extensions", "client-state", "first-run", "launcher-host", "bridge", "experience-sdk", "mod-api", "mod-render", "acceptance", "assets", "block-transform", "chunk-pipeline", "client-presentation", "client-session", "client-ui", "client-world", "developer-control", "diagnostics", "gameplay", "gilrs", "inventory", "json-ui", "launcher", "libc", "meshing", "mod-host", "objc2", "objc2-app-kit", "objc2-foundation", "objc2-quartz-core", "oreui", "pack-compiler", "particles", "player-state", "protocol", "raw-window-handle", "render", "render-api", "render-model", "resource-pack", "rich-presence", "semantic-input", "server-experience", "sim", "tracing-tracy", "ui", "ui-engine", "ui-screens", "mod-ui", "update-manifest", "world", "test-time", "pack-runtime", "client-audio"]
+allowed_dependencies = ["pack-json", "env-compat", "simulation-clock", "actor-animation", "render-scene", "client-shell", "client-interaction", "client-runtime", "client-extensions", "client-state", "first-run", "launcher-host", "bridge", "experience-sdk", "mod-api", "mod-render", "acceptance", "assets", "block-transform", "chunk-pipeline", "client-presentation", "client-session", "client-ui", "client-world", "developer-control", "diagnostics", "gameplay", "gilrs", "inventory", "json-ui", "launcher", "libc", "meshing", "mimalloc", "mod-host", "objc2", "objc2-app-kit", "objc2-foundation", "objc2-quartz-core", "oreui", "pack-compiler", "particles", "player-state", "protocol", "raw-window-handle", "render", "render-api", "render-model", "resource-pack", "rich-presence", "semantic-input", "server-experience", "sim", "tracing-tracy", "ui", "ui-engine", "ui-screens", "mod-ui", "update-manifest", "world", "test-time", "pack-runtime", "client-audio"]
 forbidden_dependencies = ["asset-compiler"]
 forbidden_transitive_dependencies = ["asset-compiler"]
 

@@ -2,11 +2,7 @@
 use super::*;
 use crate::actor_publication::ActorFramePartialTick;
 use crate::camera::{CameraSettingsAuthority, FirstPersonHandMotion, FlyCamera, ServerCameraView};
-use crate::camera::{
-    bob::{HandSwayState, WalkBobState},
-    hurt::CameraHurtState,
-    java::JavaCameraState,
-};
+use crate::camera::{bob::WalkBobState, hurt::CameraHurtState, java::JavaCameraState};
 use crate::local_player::LocalViewPose;
 use crate::observations::{CameraMovementTick, PhysicsObservation, WorldObservation};
 use crate::presentation::combat::tests::{event, player_stream};
@@ -71,7 +67,6 @@ fn sample(
     world: Res<TestWorld>,
     physics: Res<TestPhysics>,
     bob: ResMut<WalkBobState>,
-    sway: ResMut<HandSwayState>,
     hurt: ResMut<CameraHurtState>,
     java: ResMut<JavaCameraState>,
     legacy: ResMut<LegacyCameraMotion>,
@@ -87,7 +82,6 @@ fn sample(
         Some(&*physics),
         None,
         bob,
-        sway,
         hurt,
         java,
         legacy,
@@ -128,7 +122,6 @@ fn camera_app() -> App {
         .init_resource::<CameraSettingsAuthority>()
         .init_resource::<LocalViewPose>()
         .init_resource::<WalkBobState>()
-        .init_resource::<HandSwayState>()
         .init_resource::<CameraHurtState>()
         .init_resource::<JavaCameraState>()
         .init_resource::<LegacyCameraMotion>()
@@ -429,4 +422,39 @@ fn reanchored_bob_does_not_rewind_when_the_actor_fraction_wraps() {
         app.world().resource::<LegacyCameraMotion>().state.endpoints,
         endpoints
     );
+}
+
+#[test]
+fn shared_hand_sway_uses_java_ticks_with_either_animation_option_and_bob_preference() {
+    for java_mode in [false, true] {
+        for view_bobbing in [false, true] {
+            let mut app = camera_app();
+            let mut user = ui::UserSettings::default();
+            user.video.java_animations = java_mode;
+            user.video.view_bobbing = view_bobbing;
+            app.world_mut()
+                .resource_mut::<CameraSettingsAuthority>()
+                .replace(1, &user)
+                .unwrap();
+            tick(&mut app, 1);
+            app.world_mut().run_system_cached(sample).unwrap();
+            tick(&mut app, 2);
+            app.insert_resource(LocalViewPose::new(
+                Vec3::ZERO,
+                Quat::from_euler(
+                    EulerRot::YXZ,
+                    20.0_f32.to_radians(),
+                    -40.0_f32.to_radians(),
+                    0.0,
+                ),
+            ));
+            app.world_mut().run_system_cached(sample).unwrap();
+            let motion = app.world().resource::<FirstPersonHandMotion>();
+            assert!((motion.sway_pitch_radians.to_degrees() - 3.0).abs() < 1e-5);
+            assert!((motion.sway_yaw_radians.to_degrees() + 1.5).abs() < 1e-5);
+            let camera = *app.world().resource::<JavaCameraState>();
+            app.world_mut().run_system_cached(sample).unwrap();
+            assert_eq!(*app.world().resource::<JavaCameraState>(), camera);
+        }
+    }
 }

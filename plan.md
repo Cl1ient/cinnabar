@@ -5162,6 +5162,12 @@ Scope: block registry + block-state → model/texture mapping (generated export 
           native lighting/measurement remain open. Campfire terrain logs, ember bed
           and flames match the 26.30 client model. The model is unchanged for
           1.26.50 but remains unverified there.
+          The enchanting-table book follows the native block actor tick and model
+          animation (Bedrock 1.26.10): it turns toward the nearest player within
+          three blocks, opens and closes, leafs toward random pages, hovers and
+          bobs. Flat covers and pages draw as two-faced sheets, and entity-lit
+          back faces are culled. Its entity lighting from the table's glow is
+          provisional, and the lectern stand placement needs native measurement.
     - [ ] Merge both the Axolotl protocol-fix branch and Cinnabar feature branch
       into their respective `main` branches through reviewed PRs using normal
       history-preserving merge commits (never squash or rebase the feature
@@ -8263,3 +8269,11 @@ Regression coverage checks overlapping files and glyph sheets, missing-file fall
 and original rejection indexes. Version-matched vanilla captures remain incomplete;
 this change does not close a parity gate. Locale font fallback and built-in named
 font alias behavior remain unchanged and need independent verification.
+
+### Model texture-array selector coverage
+
+Model texture-array selector coverage is incomplete. Compilation retains typed
+selectors and output ranges for the existing explicit model bindings. Unrecognized
+model arrays stay unresolved instead of guessing from growth or selecting index zero.
+The generic terrain accessor, complete native binding inventory and custom selector
+expressions still need their own admission and coverage work.

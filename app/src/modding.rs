@@ -11,7 +11,10 @@ use bevy::prelude::*;
 #[cfg(feature = "local-mods")]
 use {
     crate::{environment::VisualTimeOverride, runtime::network::resource_packs::PackApplication},
-    bevy::window::{CursorOptions, PrimaryWindow},
+    bevy::{
+        ecs::system::SystemParam,
+        window::{CursorOptions, PrimaryWindow},
+    },
     client_runtime::network::NetworkHandle,
     client_shell::menu::MenuRuntime,
     client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource},
@@ -304,6 +307,23 @@ type ModOutputs<'w> = (
     Option<ResMut<'w, crate::item_use::ModItemUsePolicy>>,
 );
 
+/// Native presentation facts and retained observers available to one mod frame.
+#[cfg(feature = "local-mods")]
+#[derive(SystemParam)]
+struct ModObservation<'w, 's> {
+    watcher: Option<Res<'w, registration::Watcher>>,
+    render_scene: Option<ResMut<'w, render_scene::ModRenderScene>>,
+    cameras: Query<
+        'w,
+        's,
+        (&'static GlobalTransform, &'static Projection),
+        With<client_presentation::camera::FlyCamera>,
+    >,
+    frame_rate: Local<'s, presentation_facts::FrameRate>,
+    module_observer: Local<'s, module_observations::ModuleObserver>,
+    actor_style: Option<ResMut<'w, client_presentation::actor_publication::ActorPresentationStyle>>,
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "Player authority is borrowed separately from UI state."
@@ -325,17 +345,16 @@ fn drive_mod(
     mut outputs: ModOutputs,
     mut screen_input: screens::ScreenInput,
     time: Res<Time<Real>>,
-    observation: (
-        Option<Res<registration::Watcher>>,
-        Option<ResMut<render_scene::ModRenderScene>>,
-        Query<(&GlobalTransform, &Projection), With<client_presentation::camera::FlyCamera>>,
-        Local<presentation_facts::FrameRate>,
-        Local<module_observations::ModuleObserver>,
-        Option<ResMut<client_presentation::actor_publication::ActorPresentationStyle>>,
-    ),
+    observation: ModObservation,
 ) {
-    let (watcher, render_scene, cameras, mut frame_rate, mut module_observer, mut actor_style) =
-        observation;
+    let ModObservation {
+        watcher,
+        render_scene,
+        cameras,
+        mut frame_rate,
+        mut module_observer,
+        mut actor_style,
+    } = observation;
     let focused = windows.single().is_ok_and(|(window, _)| window.focused);
     let absorbed = client_shell::screen_policy::absorbs_input(
         &player_runtime,

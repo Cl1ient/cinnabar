@@ -57,6 +57,7 @@ fn death_view_discards_pending_cinematic_look_and_ignores_new_input() {
         .insert_resource(smoother)
         .add_systems(Update, drive);
     let mut router = SemanticInputRouter::default();
+    router.route(DeviceFrame::default()).unwrap();
     app.insert_resource(Routed(router.finalize().unwrap()));
     app.update();
     assert_eq!(app.world().resource::<LocalViewPose>().rotation(), initial);

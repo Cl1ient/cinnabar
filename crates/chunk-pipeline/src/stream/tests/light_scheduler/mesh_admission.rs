@@ -458,3 +458,41 @@ fn stationary_spawn_mesh_wakes_after_unchanged_light_completion() {
     assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
     finish_mesh(&mut stream, near);
 }
+
+/// Unrelated nearby wakeups must not re-offer a blocked nearest mesh ahead of ready geometry.
+#[test]
+fn blocked_nearest_mesh_stays_deferred_through_unrelated_wakeups() {
+    let mut stream = lit_stream(1);
+    let view = SchedulerView {
+        position: [8.0; 3],
+        forward: None,
+        startup_center: None,
+    };
+    stream
+        .mesh_jobs
+        .refresh
+        .refresh(view, &mut stream.mesh_jobs.lanes, None, |_, _| true);
+    let blocked = SubChunkKey::new(1, 0, 0, 0);
+    let ready = SubChunkKey::new(1, 2, 0, 0);
+    let unrelated = SubChunkKey::new(1, -3, 0, 0);
+    for key in [blocked, ready, unrelated] {
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        stream.resident.insert(key);
+    }
+    install_current_light(&mut stream, ready, 0, 0, false);
+    for key in [blocked, ready, unrelated] {
+        stream.mark_dirty_exact(key, Instant::now());
+    }
+    stream.poll_deadline = Some(Instant::now() - Duration::from_secs(1));
+    for _ in 0..4 {
+        stream.mark_changed_light_mesh_dependents(unrelated, [false; 6], Instant::now(), false);
+        stream.dispatch_mesh_jobs(view.position, 1);
+        if stream.mesh_jobs.in_flight.contains_key(&ready) {
+            break;
+        }
+    }
+    finish_mesh(&mut stream, ready);
+}

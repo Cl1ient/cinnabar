@@ -94,7 +94,7 @@ impl Lane {
 pub(super) struct SchedulerRefresh<const L: usize> {
     previous: [Lane; L],
     view: Option<SchedulerView>,
-    near_wakeup: bool, // nearby work became ready without a new scan record
+    woken: Vec<SubChunkKey>, // nearby work made ready without a new scan record
 }
 
 impl<const L: usize> Default for SchedulerRefresh<L> {
@@ -102,15 +102,22 @@ impl<const L: usize> Default for SchedulerRefresh<L> {
         Self {
             previous: std::array::from_fn(|_| Lane::default()),
             view: None,
-            near_wakeup: false,
+            woken: Vec::new(),
         }
     }
 }
 
 impl<const L: usize> SchedulerRefresh<L> {
-    /// Makes the next refresh probe the camera's neighbourhood when `key` lies inside it.
+    /// Offers `key` to the next dispatch when it lies in the camera's neighbourhood.
     pub(super) fn wake_near(&mut self, key: SubChunkKey) {
-        self.near_wakeup |= self.view.is_some_and(|view| mesh_is_near(view, key));
+        if self.view.is_some_and(|view| mesh_is_near(view, key)) && !self.woken.contains(&key) {
+            self.woken.push(key);
+        }
+    }
+
+    /// Drains the keys [`Self::wake_near`] offered since the last dispatch.
+    pub(super) fn take_woken(&mut self) -> Vec<SubChunkKey> {
+        std::mem::take(&mut self.woken)
     }
 
     /// Refreshes bounded queue work and reports whether the view still needs direct local probes.
@@ -128,9 +135,7 @@ impl<const L: usize> SchedulerRefresh<L> {
             std::mem::swap(&mut self.previous, queues);
             self.view = Some(view);
         }
-        let probe_near = std::mem::take(&mut self.near_wakeup)
-            || moved
-            || self.previous.iter().any(|lane| !lane.is_empty());
+        let probe_near = moved || self.previous.iter().any(|lane| !lane.is_empty());
         let mut refreshed = false;
         for _ in 0..MAX_PENDING_SCHEDULER_SCANS_PER_POLL {
             if refreshed && deadline.is_some_and(|deadline| Instant::now() >= deadline) {

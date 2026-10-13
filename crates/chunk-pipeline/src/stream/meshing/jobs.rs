@@ -45,7 +45,6 @@ impl WorldStream {
                     .sub_chunk(key)
                     .is_none_or(|source| !classifier.is_sub_chunk_air(&source))
         };
-        let mut local_ingress = false;
         let probe_near = self
             .mesh_jobs
             .ingress(view, self.poll_deadline, |key, _, pending| {
@@ -54,31 +53,44 @@ impl WorldStream {
                 } else {
                     MESH_REMOVAL_LANE
                 };
-                local_ingress |= lane == RESIDENT_MESH_LANE && scheduler::mesh_is_near(view, key);
-                (lane, pending.urgent)
+                // Fresh nearby geometry competes now instead of waiting for the ready lane to drain.
+                let near = lane == RESIDENT_MESH_LANE && scheduler::mesh_is_near(view, key);
+                (lane, pending.urgent || near)
             });
+        let woken = self.mesh_jobs.refresh.take_woken();
 
         let occupied = self.admitted_mesh_jobs.load(Ordering::Acquire);
         let mesh_worker_cap = super::admission::mesh_worker_cap();
         let regular_budget = budget.min(mesh_worker_cap.saturating_sub(occupied));
         let worker_budget = budget.min((mesh_worker_cap + urgent_reserve).saturating_sub(occupied));
-        let mut resident_candidates = if probe_near || local_ingress {
+        let probe = |key| {
+            let pending = self.mesh_jobs.pending.get(&key).copied()?;
+            (requires_geometry(key)
+                && !self.mesh_jobs.in_flight.contains_key(&key)
+                && self.revisions.is_current(key, pending.revision))
+            .then_some((
+                PendingSchedulerCandidate::new(key, pending.revision, view, pending.urgent),
+                pending,
+                false,
+            ))
+        };
+        let mut resident_candidates = if probe_near {
             scheduler::near_camera_keys(view, self.authority.current_dimension())
-                .filter_map(|key| {
-                    let pending = self.mesh_jobs.pending.get(&key).copied()?;
-                    (requires_geometry(key)
-                        && !self.mesh_jobs.in_flight.contains_key(&key)
-                        && self.revisions.is_current(key, pending.revision))
-                    .then_some((
-                        PendingSchedulerCandidate::new(key, pending.revision, view, pending.urgent),
-                        pending,
-                        false,
-                    ))
-                })
+                .filter_map(&probe)
                 .collect::<Vec<_>>()
         } else {
             Vec::new()
         };
+        // Only the woken keys rejoin, so a blocked neighbour keeps its deferral.
+        for key in woken {
+            if !resident_candidates
+                .iter()
+                .any(|(candidate, _, _)| candidate.key == key)
+                && let Some(candidate) = probe(key)
+            {
+                resident_candidates.push(candidate);
+            }
+        }
         resident_candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
         resident_candidates.truncate(MAX_PENDING_SCHEDULER_SCANS_PER_POLL);
         let mut removal_candidates = Vec::new();
@@ -185,7 +197,7 @@ impl WorldStream {
                 || dispatched >= worker_budget
                 || (dispatched >= regular_budget && !candidate.urgent);
             if at_capacity || (examined && self.poll_budget_exhausted()) {
-                // A probed candidate sits in no ready queue; probe again once capacity returns.
+                // Probed and woken candidates sit in no ready queue; offer them again later.
                 if at_capacity {
                     self.mesh_jobs.refresh.wake_near(key);
                 }

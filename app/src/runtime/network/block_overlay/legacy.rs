@@ -15,6 +15,12 @@ pub(super) struct TextureBindings {
     pub(super) invalid: u32,
 }
 
+/// A resolved key and the binding shape that controls pillar UV rotation.
+pub(super) struct TextureBinding<'a> {
+    pub(super) key: &'a str,
+    pub(super) per_face: bool,
+}
+
 impl TextureBindings {
     pub(super) fn new(view: &LayeredPackView) -> Self {
         let mut bindings = Self {
@@ -56,6 +62,18 @@ impl TextureBindings {
         face: usize,
         carried: bool,
     ) -> Option<&str> {
+        self.binding(name, alias, face, carried)
+            .map(|binding| binding.key)
+    }
+
+    /// Resolves a face while retaining whether its winning entry is scalar or per-face.
+    pub(super) fn binding(
+        &self,
+        name: &str,
+        alias: &str,
+        face: usize,
+        carried: bool,
+    ) -> Option<TextureBinding<'_>> {
         let bindings = if carried {
             &self.carried
         } else {
@@ -75,7 +93,10 @@ impl TextureBindings {
                     .iter()
                     .find(|material| material.name.as_ref() == name)
             })
-            .map(|material| material.texture.as_ref())
+            .map(|material| TextureBinding {
+                key: material.texture.as_ref(),
+                per_face: material.name.as_ref() != "*",
+            })
     }
 
     /// Legacy textures supply cubes whose component set declares no

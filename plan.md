@@ -5,7 +5,9 @@ independent weighted choices. Raster-only layers preserve base weighted selector
 repoint only plain full-cube world faces with one-to-one source mappings and prepare
 separate carried cube icons and held-item sheets. Carried-only texture changes also
 prepare art for eligible cubes. The material sidecar retains source facts and cube
-rebinding eligibility after packing.
+rebinding eligibility after packing. Carrier fallback resolves raster paths across keys,
+retains baked atlas tint, and applies a new multiplier only to untinted sources. Cube
+bindings derive UV rotation from the replacement binding shape and retained pillar mapping.
 
 Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
 blocks without a pillar axis, model and container blocks, tinted carried textures,

@@ -9,6 +9,8 @@ pub struct MaterialTextureSource {
     pub key: Box<str>,
     pub variant: u32,
     pub path: Box<str>,
+    /// Atlas multiplier already applied to this material's carrier pixels.
+    pub baked_tint: Option<[u8; 3]>,
 }
 
 /// A block's binding identity and face orientation without a geometry override.
@@ -19,6 +21,8 @@ pub struct BlockTextureSource {
     pub name: Box<str>,
     pub binding_name: Box<str>,
     pub source_faces: [u8; 6],
+    /// Quarter-turn UV rotation for each world face when the binding is per-face.
+    pub source_rotations: [bool; 6],
     /// Both world faces and carried art may be rebound only for admitted full cubes.
     pub cube_binding_eligible: bool,
     pub carried_keys: [Option<Box<str>>; 6],

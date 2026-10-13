@@ -169,14 +169,24 @@ impl Builder<'_> {
                     .material_source(material)
                     .map_or(0, |source| source.variant);
                 let flags = base.material(material).flags;
-                let world_key = bindings.texture(
+                let world_binding = bindings.binding(
                     &source.name,
                     &source.binding_name,
                     source.source_faces[index] as usize,
                     false,
                 );
-                if let Some(key) = world_key {
-                    faces[index] = self.terrain_material(keys, key, variant, flags);
+                if let Some(binding) = world_binding {
+                    let rotation = if binding.per_face && source.source_rotations[index] {
+                        assets::MATERIAL_FLAG_ROTATE_UV
+                    } else {
+                        0
+                    };
+                    faces[index] = self.terrain_material(
+                        keys,
+                        binding.key,
+                        variant,
+                        (flags & !assets::MATERIAL_FLAG_ROTATE_UV) | rotation,
+                    );
                 }
                 let carried_key = carried_keys[index];
                 if let Some(key) = carried_key {
@@ -244,10 +254,15 @@ impl Builder<'_> {
                     choice: index as u32,
                 })
                 .or_else(|| {
-                    let (id, _) = keys.material_sources().find(|(_, source)| {
-                        source.key.as_ref() == key && source.path.as_ref() == choice.path
-                    })?;
-                    self.copy_base_texture(id)
+                    let (id, source) = keys
+                        .material_sources()
+                        .filter(|(_, source)| {
+                            source.path.as_ref() == choice.path
+                                && (source.baked_tint.is_none() || source.baked_tint == choice.tint)
+                        })
+                        .min_by_key(|(_, source)| source.baked_tint != choice.tint)?;
+                    let tint = source.baked_tint.is_none().then_some(choice.tint).flatten();
+                    self.copy_base_texture(id, tint)
                 })?;
             leaves.push(Material {
                 texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
@@ -278,9 +293,10 @@ impl Builder<'_> {
         Some(id)
     }
 
-    /// Copies immutable carrier pixels for bindings whose images are absent from optional packs.
-    fn copy_base_texture(&mut self, id: u32) -> Option<TextureSlot> {
-        if let Some(slot) = self.base_textures.get(&id) {
+    /// Copies carrier frames and applies a multiplier only when it is not already baked in.
+    fn copy_base_texture(&mut self, id: u32, tint: Option<[u8; 3]>) -> Option<TextureSlot> {
+        let cache_key = (id, tint);
+        if let Some(slot) = self.base_textures.get(&cache_key) {
             return Some(slot.clone());
         }
         let base = self.base_assets?;
@@ -305,14 +321,15 @@ impl Builder<'_> {
             let mip = page.texture.mips.first()?;
             let bytes = (mip.size * mip.size * 4) as usize;
             let start = reference.layer() as usize * bytes;
-            frames.push(shrink_to_max(
-                &DecodedTexture {
-                    width: mip.size,
-                    height: mip.size,
-                    rgba8: mip.rgba8.get(start..start + bytes)?.into(),
-                },
-                MAX_TILE,
-            ));
+            let mut frame = DecodedTexture {
+                width: mip.size,
+                height: mip.size,
+                rgba8: mip.rgba8.get(start..start + bytes)?.into(),
+            };
+            if let Some(tint) = tint {
+                pack_compiler::apply_atlas_tint(&mut frame.rgba8, tint);
+            }
+            frames.push(shrink_to_max(&frame, MAX_TILE));
         }
         let bytes: usize = frames.iter().map(|frame| frame.rgba8.len()).sum();
         if self.source_bytes + bytes > MAX_OVERLAY_SOURCE_BYTES {
@@ -340,7 +357,7 @@ impl Builder<'_> {
             layer: first,
             animation,
         };
-        self.base_textures.insert(id, slot.clone());
+        self.base_textures.insert(cache_key, slot.clone());
         Some(slot)
     }
 }

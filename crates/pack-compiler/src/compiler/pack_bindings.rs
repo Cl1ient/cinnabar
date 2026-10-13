@@ -22,6 +22,7 @@ pub(super) fn retain(
                 key: descriptor.texture_key.clone(),
                 variant: descriptor.state_variant,
                 path: descriptor.path.clone(),
+                baked_tint: None,
             },
         );
         let material = materials[id as usize];
@@ -38,6 +39,7 @@ pub(super) fn retain(
                         key: descriptor.texture_key.clone(),
                         variant: descriptor.state_variant,
                         path: choice.path.clone(),
+                        baked_tint: None,
                     },
                 );
             }
@@ -51,6 +53,9 @@ pub(super) fn retain(
                     key: key.clone(),
                     variant: 0,
                     path: path.into(),
+                    baked_tint: keys.fixed_tints().find_map(|(tinted_key, tint)| {
+                        (tinted_key == key.as_ref()).then_some(tint)
+                    }),
                 },
             );
         }
@@ -63,13 +68,14 @@ pub(super) fn retain(
     let blocks = records
         .iter()
         .map(|record| {
-            let (binding_name, source_faces) =
+            let (binding_name, source_faces, source_rotations) =
                 crate::pack::runtime_binding_identity(&pack.blocks, record);
             BlockTextureSource {
                 visual: record.sequential_id,
                 name: record.name.clone(),
                 binding_name,
                 source_faces,
+                source_rotations,
                 cube_binding_eligible: cube_binding_eligible(
                     pack,
                     record,

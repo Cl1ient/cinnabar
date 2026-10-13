@@ -289,7 +289,7 @@ pub fn resolve_texture_key(
 pub(crate) fn runtime_binding_identity(
     blocks: &BlockTextureMap,
     record: &RegistryRecord,
-) -> (Box<str>, [u8; 6]) {
+) -> (Box<str>, [u8; 6], [bool; 6]) {
     let name = record
         .name
         .strip_prefix("minecraft:")
@@ -306,6 +306,7 @@ pub(crate) fn runtime_binding_identity(
     (
         binding_name.into(),
         BlockFace::ALL.map(|face| orient_face(face, axis).0 as u8),
+        BlockFace::ALL.map(|face| orient_face(face, axis).1),
     )
 }
 

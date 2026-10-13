@@ -2,13 +2,18 @@ use super::*;
 use assets::{ModelFamily, ModelStateField};
 use serde_json::json;
 
-/// Original catalog data gives every face an untinted world and carried route.
+/// Supplies a scalar world binding and optionally tinted carried art.
 fn pack(tinted_carried: bool) -> PackSources {
+    pack_with_binding(tinted_carried, json!("world"))
+}
+
+/// Creates original catalogs while preserving the supplied world binding's shape.
+fn pack_with_binding(tinted_carried: bool, textures: serde_json::Value) -> PackSources {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(root.path().join("textures")).unwrap();
     std::fs::write(
         root.path().join("blocks.json"),
-        r#"{"fixture":{"textures":"world","carried_textures":"carry"}}"#,
+        json!({"fixture":{"textures":textures,"carried_textures":"carry"}}).to_string(),
     )
     .unwrap();
     std::fs::write(root.path().join("textures/terrain_texture.json"), json!({"texture_data":{"world":{"textures":"textures/world"},"carry":{"textures":if tinted_carried { json!({"path":"textures/carry","tint_color":"#ff0000"}) } else { json!("textures/carry") }}}}).to_string()).unwrap();
@@ -177,4 +182,70 @@ fn wall_fence_and_other_inventory_models_are_excluded() {
             &materials
         ));
     }
+}
+
+#[test]
+fn pillar_mapping_retains_uv_rotation_independently_of_the_original_scalar_binding() {
+    let pack = pack(false);
+    let per_face = pack_with_binding(
+        false,
+        json!({"west":"world","east":"world","down":"world","up":"world","north":"world","south":"world"}),
+    );
+    for axis in ["x", "y", "z"] {
+        let (mut record, visual, materials) = cube();
+        record.canonical_state = json!({"pillar_axis":{"type":"string","value":axis}})
+            .to_string()
+            .into();
+        let keys = retain(
+            MaterialKeys::default(),
+            &pack,
+            &BTreeMap::new(),
+            &materials,
+            (&[record.clone()], &[visual]),
+            &[],
+            &[],
+        );
+        let source = &keys.block_sources()[0];
+        for face in BlockFace::ALL {
+            assert!(!crate::pack::resolve_texture_key(&pack.blocks, &record, face).rotate_uv);
+            assert_eq!(
+                source.source_rotations[face as usize],
+                crate::pack::resolve_texture_key(&per_face.blocks, &record, face).rotate_uv
+            );
+        }
+        assert_eq!(
+            source.source_rotations.iter().any(|&rotate| rotate),
+            axis != "y"
+        );
+    }
+}
+
+#[test]
+fn fixed_atlas_tint_is_retained_only_on_the_baked_material_copy() {
+    let pack = pack(false);
+    let tint = [128, 64, 255];
+    let descriptors = BTreeMap::from([(
+        Descriptor {
+            path: "textures/world".into(),
+            texture_key: "world".into(),
+            flags: 0,
+            state_variant: 0,
+            flipbook_selector: None,
+        },
+        1,
+    )]);
+    let keys = retain(
+        MaterialKeys::from_entries([(1, "world"), (2, "world")])
+            .with_fixed_tints([("world", tint)]),
+        &pack,
+        &descriptors,
+        &vec![Material::unvaried(); 4],
+        (&[], &[]),
+        &[(2, "world".into())],
+        &[(3, 2)],
+    );
+    let keys = MaterialKeys::from_json(&keys.to_json(4), 4).unwrap();
+    assert_eq!(keys.material_source(1).unwrap().baked_tint, None);
+    assert_eq!(keys.material_source(2).unwrap().baked_tint, Some(tint));
+    assert_eq!(keys.material_source(3).unwrap().baked_tint, Some(tint));
 }

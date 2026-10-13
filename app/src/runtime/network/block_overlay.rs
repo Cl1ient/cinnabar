@@ -229,7 +229,7 @@ struct Builder<'a> {
     catalog: TextureCatalog<'a>,
     base_assets: Option<&'a assets::RuntimeAssets>,
     vanilla_carried: Vec<CarriedBlock>,
-    base_textures: HashMap<u32, TextureSlot>,
+    base_textures: HashMap<(u32, Option<[u8; 3]>), TextureSlot>,
     terrain_materials: HashMap<(String, u32, u32), u32>,
     geometries: HashMap<String, Geometry>,
     overlay: BlockOverlay,

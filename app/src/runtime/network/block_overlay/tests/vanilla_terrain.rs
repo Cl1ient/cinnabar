@@ -68,6 +68,7 @@ fn keys() -> MaterialKeys {
                         key: "state".into(),
                         variant: 0,
                         path: "textures/base_a".into(),
+                        baked_tint: None,
                     },
                 ),
                 (
@@ -76,6 +77,7 @@ fn keys() -> MaterialKeys {
                         key: "state".into(),
                         variant: 1,
                         path: "textures/base_b".into(),
+                        baked_tint: None,
                     },
                 ),
             ],
@@ -85,6 +87,7 @@ fn keys() -> MaterialKeys {
                     name: "minecraft:fixture".into(),
                     binding_name: "fixture".into(),
                     source_faces: [0, 1, 2, 3, 4, 5],
+                    source_rotations: [false; 6],
                     cube_binding_eligible: true,
                     carried_keys: std::array::from_fn(|_| None),
                     carried_fallback_keys: std::array::from_fn(|_| Some("state".into())),
@@ -94,6 +97,7 @@ fn keys() -> MaterialKeys {
                     name: "minecraft:other".into(),
                     binding_name: "other".into(),
                     source_faces: [0, 1, 2, 3, 4, 5],
+                    source_rotations: [false; 6],
                     cube_binding_eligible: true,
                     carried_keys: std::array::from_fn(|_| None),
                     carried_fallback_keys: std::array::from_fn(|_| Some("state".into())),
@@ -389,3 +393,5 @@ fn carried_only_keys_trigger_item_preparation_for_catalog_and_raster_changes() {
 }
 
 mod exclusions;
+
+mod carrier_replacements;

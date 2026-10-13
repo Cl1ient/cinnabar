@@ -5,7 +5,8 @@ use assets::{Animation, NO_ANIMATION, TextureRef, texture::flipbook::FlipbookSou
 use pack_runtime::pack_textures::DecodedTexture;
 
 use super::{
-    Builder, Source, TextureSlot,
+    Builder, Source, TextureRoute, TextureSlot,
+    texture_admission::AdmittedTexture,
     textures::{FrameSequence, admit_static_rectangle, flipbook_frames},
 };
 
@@ -27,51 +28,90 @@ enum AdmissionFailure {
 mod tests;
 
 impl Builder<'_> {
-    /// Reuses cached source frames before checking capacity for new image reads.
-    pub(super) fn load_texture(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
-        let source = self.catalog.flipbook(key, selector).cloned();
-        if let Some(source) = source.as_ref()
-            && let Some(storage) = self.source_storage(key, Some(source))
-            && let Some(slot) = self.bind_frames(storage, Some(source), selector)
+    /// Reuses source frames and binds their destination without allocating duplicate rasters.
+    pub(super) fn load_texture(
+        &mut self,
+        route: &TextureRoute,
+        carrier: Option<&assets::material_keys::MaterialKeys>,
+    ) -> Option<AdmittedTexture> {
+        let identity = self.catalog.identity(route)?;
+        let source = identity.flipbook.as_ref();
+        if let Some(source) = source
+            && let Some((storage, pack)) = self.source_storage(route, Some(source), carrier)
+            && let Some(slot) = self.bind_frames(storage, Some(source), identity.selector)
         {
-            return Some(slot);
+            return Some(AdmittedTexture { slot, pack });
         }
-        let storage = self.source_storage(key, None)?;
-        self.bind_frames(storage, None, selector)
+        let (storage, pack) = self.source_storage(route, None, carrier)?;
+        let slot = self.bind_frames(storage, None, identity.selector)?;
+        Some(AdmittedTexture { slot, pack })
     }
 
-    /// Caches immutable source admission for both paths without caching destination timing errors.
+    /// Caches source failures and resolved image frames independently of destination timing.
     fn source_storage(
         &mut self,
-        key: &str,
+        route: &TextureRoute,
         source: Option<&FlipbookSource>,
-    ) -> Option<FrameStorage> {
-        let storage_key = self.catalog.storage_key(key, source)?;
-        if let Some(&storage) = self.frame_storage.get(&storage_key) {
-            return storage;
+        carrier: Option<&assets::material_keys::MaterialKeys>,
+    ) -> Option<(FrameStorage, bool)> {
+        let key = route.key();
+        let storage_key = self.catalog.storage_key(route, source)?;
+        let carrier_policy = carrier.is_some() && source.is_none();
+        if let Some(storage) = self.slots.frames(&storage_key, false)
+            && (storage.is_some() || !carrier_policy)
+        {
+            return storage.map(|storage| (storage, true));
         }
-        let available = match source {
-            Some(_) => self.max_layers.saturating_sub(self.sources.len()),
-            None => self.remaining_capacity(key).unwrap_or(0),
-        };
-        let admission = (available > 0).then(|| {
-            let texture = match source {
-                Some(source) => self.catalog.decode_path(key, &source.texture_path),
-                None => self.catalog.decode(key),
+        if carrier_policy && let Some(storage) = self.slots.frames(&storage_key, true) {
+            return storage.map(|storage| (storage, false));
+        }
+        let available = self.max_layers.saturating_sub(self.sources.len());
+        if available == 0 {
+            for path in self
+                .catalog
+                .reusable_image_paths(route, source, carrier_policy)
+            {
+                let resolved_key = storage_key.clone().with_image(path);
+                if let Some(Some(storage)) = self.slots.frames(&resolved_key, false) {
+                    self.slots.insert_frames(storage_key, Some(storage), false);
+                    return Some((storage, true));
+                }
+                if carrier_policy
+                    && let Some(Some(storage)) = self.slots.frames(&resolved_key, true)
+                {
+                    self.slots.insert_frames(storage_key, Some(storage), true);
+                    return Some((storage, false));
+                }
             }
-            .ok_or(AdmissionFailure::Source)?;
-            self.store_frames(key, storage_key.grid, texture, source, available)
-        });
-        let storage = match admission {
-            Some(Err(AdmissionFailure::Timing)) => return None,
-            Some(Ok(storage)) => Some(storage),
-            Some(Err(AdmissionFailure::Source)) | None => None,
+            if source.is_none() {
+                self.remaining_capacity(key);
+            }
+            self.slots.insert_frames(storage_key, None, carrier_policy);
+            return None;
+        }
+        let Some(image) = self.catalog.decode_source(route, source, |path, tint| {
+            super::textures::carrier_image(self.base_assets?, carrier?, path, tint)
+        }) else {
+            self.slots.insert_frames(storage_key, None, carrier_policy);
+            return None;
         };
-        self.frame_storage.insert(storage_key, storage);
-        storage
+        let resolved_key = storage_key.clone().with_image(image.image_path);
+        if let Some(storage) = self.slots.frames(&resolved_key, !image.pack) {
+            self.slots.insert_frames(storage_key, storage, !image.pack);
+            return storage.map(|storage| (storage, image.pack));
+        }
+        let admission = self.store_frames(key, storage_key.grid, image.texture, source, available);
+        let storage = match admission {
+            Err(AdmissionFailure::Timing) => return None,
+            Ok(storage) => Some(storage),
+            Err(AdmissionFailure::Source) => None,
+        };
+        self.slots.insert_frames(resolved_key, storage, !image.pack);
+        self.slots.insert_frames(storage_key, storage, !image.pack);
+        storage.map(|storage| (storage, image.pack))
     }
 
-    /// Returns available layers, counting a full-array rejection before any image read.
+    /// Returns available layers, counting a full-array rejection after cached images are checked.
     fn remaining_capacity(&mut self, key: &str) -> Option<usize> {
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {

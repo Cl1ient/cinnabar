@@ -111,6 +111,20 @@ impl<'a> Model<'a> {
         Self::build(parts, block.kind, block.faces, template)
     }
 
+    /// Draws carried cube faces from overlay pixels without cloning the texture page.
+    pub(super) fn overlay_cube(overlay: &'a BlockOverlay, faces: [u32; 6]) -> Result<Self, Reject> {
+        let parts = Parts {
+            materials: &overlay.materials,
+            templates: &overlay.model_templates,
+            quads: &overlay.model_quads,
+            textures: Textures::Overlay(
+                overlay.texture.as_ref().ok_or(Reject::Texture)?,
+                &overlay.texture_source_grids,
+            ),
+        };
+        Self::build(parts, VisualKind::Cube, faces, None)
+    }
+
     fn build(
         parts: Parts<'a>,
         kind: VisualKind,

@@ -1,3 +1,37 @@
+## Runtime terrain bindings
+
+Optional terrain catalogs retain each material's source key, state variant, tint, and
+independent weighted choices. Raster-only layers refresh selector representatives while
+preserving base variation ranges and leaf weights. Retained choice indices distinguish
+repeated raster paths for flipbook updates. Block texture bindings
+repoint only plain full-cube world faces with one-to-one source mappings and prepare
+separate carried cube icons and held-item sheets. Carried-only texture changes also
+prepare art for eligible cubes. The material sidecar retains source facts and cube
+rebinding eligibility after packing. Carrier fallback resolves raster paths across keys,
+retains baked atlas tint, and applies a new multiplier only to untinted sources. Pack
+and carrier images share filename resolution, tint, UV grids, and frame admission. Cube
+bindings derive UV rotation from the replacement binding shape and retained pillar mapping.
+Animation and selector caches use resolved state indices. Material admission reserves the
+base table, failed routes release unpublished allocations, and held sheets survive without
+thumbnails. Retained block bindings are ordered by visual ID.
+Repeated catalog states and cube bindings keep base references when their rasters are absent;
+changed choices still use carrier fallback. Specialized material sources retain their selected
+catalog keys and variant indices.
+Raster reuse follows the resolved image filename while preserving tint, grid and flipbook
+policies. Full arrays check indexed aliases for reuse before reading any new image payload.
+Block icon baking runs only when the icon subscriber recompiles. Mesh reuse also requires
+each material to retain its positional-versus-static variation mode.
+
+Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
+blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,
+leaves, walls, fences, and other inventory-state models. These keep their existing routes.
+Carrier fallback for animated donors is also incomplete: their baked timelines do not
+retain physical source-frame identities. Such donors are excluded from fallback; bundled
+images still use the destination route's flipbook metadata.
+CI must compile and run the regression fixtures. Rendered state variants, position-selected
+texture output, pack reload/removal, and performance acceptance still need headless
+verification. No parity gate closes here.
+
 ## Launcher updates
 
 One client per install owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and

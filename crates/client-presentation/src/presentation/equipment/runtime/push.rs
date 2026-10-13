@@ -122,12 +122,12 @@ impl EquipmentRuntime {
         item: &WornItem,
         icon_fallback: bool,
     ) -> Option<(EntityRigId, ActorArtworkLocation, bool, [f32; 2])> {
-        let session = match item.kind {
-            HeldKind::Sprite | HeldKind::Other => {
-                self.session_held(&item.identifier, item.metadata)
-            }
-            HeldKind::Block(_) => None,
-        };
+        let session =
+            self.session_held(&item.identifier, item.metadata)
+                .filter(|(_, key, _, _)| {
+                    !matches!(item.kind, HeldKind::Block(_))
+                        || matches!(key, MeshKey::SessionBlock(_))
+                });
         let (index, key, placement, location) = if let Some(held) = session {
             held
         } else {

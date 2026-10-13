@@ -7,6 +7,12 @@ use resource_pack::LayeredPackView;
 use serde_json::Value;
 use std::{collections::HashMap, io::Cursor};
 
+mod catalog;
+mod decoded;
+use catalog::first_texture_path;
+pub use catalog::indexed_image_candidate;
+pub mod terrain;
+
 const MAX_TEXTURE_SOURCE_BYTES: usize = resource_pack::MAX_PACK_TEXTURE_BYTES as usize;
 const LEGACY_TEXTURE_SIDE: u32 = 1024;
 pub const MAX_CATALOG_ENTRIES: usize = 16_384;
@@ -17,41 +23,6 @@ pub struct DecodedTexture {
     pub width: u32,
     pub height: u32,
     pub rgba8: Box<[u8]>,
-}
-
-impl DecodedTexture {
-    /// Keeps the upper-left square frame of an integral strip on either axis.
-    /// Square images, other rectangles, and malformed pixel buffers remain unchanged.
-    pub fn retain_first_strip_frame(&mut self) {
-        let side = self.width.min(self.height);
-        let extent = self.width.max(self.height);
-        if side == 0
-            || side == extent
-            || !extent.is_multiple_of(side)
-            || self
-                .width
-                .checked_mul(self.height)
-                .and_then(|pixels| pixels.checked_mul(4))
-                .and_then(|bytes| usize::try_from(bytes).ok())
-                != Some(self.rgba8.len())
-        {
-            return;
-        }
-        let frame_bytes = (side * side * 4) as usize;
-        if self.width == side {
-            let mut pixels = std::mem::take(&mut self.rgba8).into_vec();
-            pixels.truncate(frame_bytes);
-            self.rgba8 = pixels.into_boxed_slice();
-        } else {
-            let mut pixels = Vec::with_capacity(frame_bytes);
-            for row in self.rgba8.chunks_exact(self.width as usize * 4) {
-                pixels.extend_from_slice(&row[..side as usize * 4]);
-            }
-            self.rgba8 = pixels.into_boxed_slice();
-        }
-        self.width = side;
-        self.height = side;
-    }
 }
 
 /// Maps each `texture_data` key of a texture catalog (terrain or item) to its
@@ -159,6 +130,24 @@ pub fn decode_pack_texture_with_policy(
     policy: TexturePolicy,
     allow_strip: bool,
 ) -> Option<DecodedTexture> {
+    resolve_pack_texture_with_policy(view, path, policy, allow_strip)
+        .map(|resolved| resolved.texture)
+}
+
+/// Decoded pixels and the canonical filename of their image or solid-color texture set.
+#[derive(Debug)]
+pub struct ResolvedPackTexture {
+    pub texture: DecodedTexture,
+    pub image_path: String,
+}
+
+/// Resolves the same image precedence as decoding while retaining the actual source identity.
+pub fn resolve_pack_texture_with_policy(
+    view: &LayeredPackView,
+    path: &str,
+    policy: TexturePolicy,
+    allow_strip: bool,
+) -> Option<ResolvedPackTexture> {
     let path = normalize_texture_path(path);
     decode_image_file(view, path, policy, allow_strip)
         .or_else(|| decode_texture_set(view, path, policy, allow_strip))
@@ -170,7 +159,23 @@ fn decode_image_file(
     path: &str,
     policy: TexturePolicy,
     allow_strip: bool,
-) -> Option<DecodedTexture> {
+) -> Option<ResolvedPackTexture> {
+    texture_image_paths(path).into_iter().find_map(|path| {
+        let extension = path.rsplit_once('.')?.1;
+        let (_, format) = IMAGE_EXTENSIONS
+            .into_iter()
+            .find(|(known, _)| extension.eq_ignore_ascii_case(known))?;
+        let bytes = view.read_capped(&path, MAX_TEXTURE_SOURCE_BYTES as u64)?;
+        Some(ResolvedPackTexture {
+            texture: decode_image_with_policy(&bytes, format, policy, allow_strip)?,
+            image_path: path.to_ascii_lowercase(),
+        })
+    })
+}
+
+/// Returns normalized image filenames in the same order used by the pack decoder.
+pub fn texture_image_paths(path: &str) -> Vec<String> {
+    let path = path.trim().trim_start_matches("./");
     // Vanilla's loader also tries the literal path, so a pack path that already
     // names its image (`textures/items/gem.png`) resolves.
     let named = path.rsplit_once('.').and_then(|(_, extension)| {
@@ -178,22 +183,15 @@ fn decode_image_file(
             .into_iter()
             .find(|(known, _)| extension.eq_ignore_ascii_case(known))
     });
-    if let Some((_, format)) = named
-        && let Some(texture) = view
-            .read_capped(path, MAX_TEXTURE_SOURCE_BYTES as u64)
-            .and_then(|bytes| decode_image_with_policy(&bytes, format, policy, allow_strip))
-    {
-        return Some(texture);
-    }
-    IMAGE_EXTENSIONS
+    named
         .into_iter()
-        .find_map(|(extension, format)| {
-            let bytes = view.read_capped(
-                &format!("{path}.{extension}"),
-                MAX_TEXTURE_SOURCE_BYTES as u64,
-            )?;
-            decode_image_with_policy(&bytes, format, policy, allow_strip)
-        })
+        .map(|_| path.to_owned())
+        .chain(
+            IMAGE_EXTENSIONS
+                .into_iter()
+                .map(|(extension, _)| format!("{path}.{extension}")),
+        )
+        .collect()
 }
 
 /// A texture set's `color` is a sibling image name or a solid `[r, g, b(, a)]`.
@@ -202,8 +200,10 @@ fn decode_texture_set(
     path: &str,
     policy: TexturePolicy,
     allow_strip: bool,
-) -> Option<DecodedTexture> {
-    let bytes = view.read_capped(&format!("{path}.texture_set.json"), MAX_TEXTURE_SET_BYTES)?;
+) -> Option<ResolvedPackTexture> {
+    let path = path.trim().trim_start_matches("./");
+    let source = format!("{path}.texture_set.json");
+    let bytes = view.read_capped(&source, MAX_TEXTURE_SET_BYTES)?;
     let root = parse_pack_json(&bytes)?;
     match root.get("minecraft:texture_set")?.get("color")? {
         Value::String(name) => {
@@ -221,10 +221,13 @@ fn decode_texture_set(
             for (slot, channel) in pixel.iter_mut().zip(channels) {
                 *slot = channel.as_f64()?.round().clamp(0.0, 255.0) as u8;
             }
-            Some(DecodedTexture {
-                width: 1,
-                height: 1,
-                rgba8: pixel.into(),
+            Some(ResolvedPackTexture {
+                texture: DecodedTexture {
+                    width: 1,
+                    height: 1,
+                    rgba8: pixel.into(),
+                },
+                image_path: source.to_ascii_lowercase(),
             })
         }
         _ => None,
@@ -234,19 +237,6 @@ fn decode_texture_set(
 /// Parses the normalized JSON-with-comments representation used by pack files.
 pub fn parse_pack_json(bytes: &[u8]) -> Option<Value> {
     serde_json::from_slice(&normalize_jsonc(bytes)?).ok()
-}
-
-/// A texture entry is a path, an object with `path`, or a variation list whose
-/// first element is used.
-fn first_texture_path(value: &Value) -> Option<String> {
-    let path = match value {
-        Value::String(path) => path.as_str(),
-        Value::Object(entry) => entry.get("path")?.as_str()?,
-        Value::Array(entries) => return first_texture_path(entries.first()?),
-        _ => return None,
-    };
-    let path = normalize_texture_path(path);
-    (!path.is_empty()).then(|| path.to_owned())
 }
 
 /// Decodes only images whose source, dimensions, and allocation fit the established limits.

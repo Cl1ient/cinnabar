@@ -83,7 +83,8 @@ fn larger_overlays_keep_every_texture_that_fits_the_device() {
         skipped: 0,
     };
     for limit in [256, 2048, 4096, assets::MAX_TEXTURE_LAYERS as u32 + 1] {
-        let compiled = compile_block_overlay(&view, &blocks, false, None, limit).expect("overlay");
+        let compiled =
+            compile_block_overlay(&view, &blocks, false, None, limit, None).expect("overlay");
         let admitted = (wanted as u32 + 1)
             .min(limit)
             .min(assets::MAX_TEXTURE_LAYERS as u32);
@@ -124,7 +125,7 @@ fn flipbooks_use_only_the_device_layers_remaining_after_the_diagnostic() {
         ..Default::default()
     };
     for limit in [1, 2, 3] {
-        let compiled = compile_block_overlay(&view(), &blocks, false, None, limit).unwrap();
+        let compiled = compile_block_overlay(&view(), &blocks, false, None, limit, None).unwrap();
         assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, limit);
         assert!(
             compiled
@@ -141,5 +142,5 @@ fn flipbooks_use_only_the_device_layers_remaining_after_the_diagnostic() {
                 .all(|material| material.texture.layer() < limit)
         );
     }
-    assert!(compile_block_overlay(&view(), &blocks, false, None, 0).is_none());
+    assert!(compile_block_overlay(&view(), &blocks, false, None, 0, None).is_none());
 }

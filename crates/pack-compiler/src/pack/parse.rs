@@ -15,7 +15,7 @@ use serde::{
 
 const MAX_JSON_BYTES: usize = 16 * 1024 * 1024;
 pub(super) const MAX_TEXTURE_KEYS: usize = 8_192;
-pub(super) const MAX_TEXTURE_VARIANTS: usize = 256;
+pub(super) const MAX_TEXTURE_VARIANTS: usize = assets::material_keys::MAX_TERRAIN_VARIANTS;
 const MAX_TEXTURE_PATH_BYTES: usize = 4 * 1024;
 
 pub(super) struct BoundedUniqueMap<V, const MAX: usize> {

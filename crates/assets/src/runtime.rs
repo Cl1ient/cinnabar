@@ -1,4 +1,7 @@
 mod decode;
+mod face_overrides;
+#[cfg(test)]
+mod geometry_tests;
 mod id_remap;
 mod overlay;
 mod server_defined_blocks;
@@ -220,7 +223,7 @@ impl RuntimeAssets {
         )
     }
 
-    /// Texture pixels and animation frames do not change the mesh's material addresses.
+    /// Mesh reuse requires matching material addresses, flags, and positional variation mode.
     pub fn has_same_geometry(&self, other: &Self) -> bool {
         self.visuals == other.visuals
             && self.hashed == other.hashed
@@ -232,7 +235,9 @@ impl RuntimeAssets {
                 .materials
                 .iter()
                 .zip(other.materials.iter())
-                .all(|(a, b)| a.flags == b.flags)
+                .all(|(a, b)| {
+                    a.flags == b.flags && (a.variation_count > 1) == (b.variation_count > 1)
+                })
     }
 
     /// Exposed source rectangle pixels, independently of the physical texture-array size.

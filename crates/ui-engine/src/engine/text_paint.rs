@@ -145,6 +145,11 @@ impl Measure<'_, '_> {
 }
 
 impl TextMeasure for Measure<'_, '_> {
+    /// Converts the renderer's physical coverage pixel into the layout's virtual units.
+    fn physical_pixel_size(&self) -> f64 {
+        1.0 / f64::from(self.px * self.metrics.dpi_scale.get())
+    }
+
     fn extent(&self, text: &str) -> [f64; 2] {
         self.wrapped(text, UNWRAPPED_LOGICAL / f64::from(self.px))
     }

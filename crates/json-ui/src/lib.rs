@@ -39,6 +39,7 @@ mod sidecar;
 mod sprite;
 mod state;
 mod tree;
+pub mod vector_path;
 mod widgets;
 
 #[cfg(test)]

@@ -67,6 +67,11 @@ impl Rect {
 pub trait TextMeasure {
     fn extent(&self, text: &str) -> [f64; 2];
 
+    /// The width of one physical pixel in layout coordinates, for antialiased paint bounds.
+    fn physical_pixel_size(&self) -> f64 {
+        1.0
+    }
+
     /// The extent when wrapped at `max_width`; a measurer without wrapping keeps
     /// the single-line extent.
     fn wrapped(&self, text: &str, max_width: f64) -> [f64; 2] {
@@ -193,7 +198,9 @@ pub(crate) fn layout_reusing(
 ) -> (Output, LayoutReport) {
     cache.enter(root);
     let screen = Rect::new(0.0, 0.0, root_size[0], root_size[1]);
-    cache.placements.begin(state, false, screen);
+    cache
+        .placements
+        .begin(state, false, screen, env.text.physical_pixel_size());
     let (laid, report) = lay_out(
         root,
         root_size,
@@ -641,7 +648,7 @@ fn place_subtree<'a>(
         if placeholders.is_some()
             && child_shown
             && !disjoint(
-                child_rect,
+                paint_bounds(child, child_rect, ctx.env),
                 Rect {
                     x: clip_for_child.x - clip_for_child.w,
                     y: clip_for_child.y - clip_for_child.h,
@@ -666,7 +673,7 @@ fn place_subtree<'a>(
             && measure::style(child).allows != Some(false)
             && !measure::style(child).unclipped_descendant
             && (child.children.is_empty() || measure::style(child).clips)
-            && disjoint(child_rect, clip_for_child)
+            && disjoint(paint_bounds(child, child_rect, ctx.env), clip_for_child)
         {
             continue;
         }
@@ -785,6 +792,13 @@ fn disjoint(rect: Rect, clip: Rect) -> bool {
         || rect.y >= clip.y + clip.h
         || rect.x + rect.w <= clip.x
         || rect.y + rect.h <= clip.y
+}
+
+/// A node's conservative paint extent; its placement and input rectangle stay unchanged.
+pub(crate) fn paint_bounds(control: &ResolvedControl, rect: Rect, env: &LayoutEnv) -> Rect {
+    measure::style(control).path_bounds.map_or(rect, |bounds| {
+        bounds.at(rect, env.text.physical_pixel_size())
+    })
 }
 
 /// A bound `clip_ratio`, or a slider progress image revealing its fraction.

@@ -634,7 +634,7 @@ impl Canvas<'_> {
             "cinnabar_vector_icon" => self
                 .vector_icon(data, dest, &alpha)
                 .map(|visual| (visual, dest)),
-            "cinnabar_vector_path" => self
+            json_ui::vector_path::RENDERER => self
                 .vector_path(data, dest, &alpha)
                 .map(|visual| (visual, dest)),
             "cinnabar_rounded_rectangle" => self

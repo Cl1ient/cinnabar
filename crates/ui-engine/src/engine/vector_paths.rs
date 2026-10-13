@@ -8,13 +8,12 @@ use ui::{UiMesh, UiMeshVertex, UiVisual};
 use super::Canvas;
 
 mod coverage;
-mod parse;
 mod raster;
-use parse::{Path, parse};
+#[cfg(test)]
+use json_ui::vector_path::{MAX_CONTOURS, MAX_POINTS};
+use json_ui::vector_path::{Path, parse};
 use raster::mesh;
 
-const MAX_CONTOURS: usize = 64;
-const MAX_POINTS: usize = 2048;
 const MAX_GRID_CELLS: usize = 256;
 const MAX_COVERAGE_WORK: usize = 8_000_000;
 const MAX_MESH_INDICES: usize = 32_768;

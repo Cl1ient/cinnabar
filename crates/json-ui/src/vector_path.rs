@@ -4,18 +4,74 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use super::{MAX_CONTOURS, MAX_POINTS};
+/// Renderer name shared by path placement and painting.
+pub const RENDERER: &str = "cinnabar_vector_path";
+/// Maximum number of authored contours in one path.
+pub const MAX_CONTOURS: usize = 64;
+/// Maximum total number of authored points in one path.
+pub const MAX_POINTS: usize = 2048;
 
 #[derive(Clone, Eq, Hash, PartialEq)]
-pub(super) struct Path {
-    pub(super) view_box: [u32; 4],
-    pub(super) contours: Vec<Vec<[u32; 2]>>,
-    pub(super) stroke_width: Option<u32>,
-    pub(super) closed: bool,
+/// Validated, canonical path coordinates stored as finite float bits.
+pub struct Path {
+    /// Authored origin and positive extent.
+    pub view_box: [u32; 4],
+    /// Canonical fill contours or ordered stroke polylines.
+    pub contours: Vec<Vec<[u32; 2]>>,
+    /// Positive authored stroke width; absent for an even-odd fill.
+    pub stroke_width: Option<u32>,
+    /// Whether each contour joins its last point to its first.
+    pub closed: bool,
+}
+
+/// Conservative authored bounds kept separately from layout and input rectangles.
+#[derive(Clone, Copy)]
+pub(crate) struct Bounds {
+    view_box: [f32; 4],
+    min: [f32; 2],
+    max: [f32; 2],
+    stroke: f32,
+}
+
+impl Bounds {
+    /// Retains point extrema and the shared stroke policy without retaining all path points.
+    pub(crate) fn new(path: &Path) -> Option<Self> {
+        let mut min = [f32::INFINITY; 2];
+        let mut max = [f32::NEG_INFINITY; 2];
+        for point in path.contours.iter().flatten() {
+            for axis in 0..2 {
+                let value = f32::from_bits(point[axis]);
+                min[axis] = min[axis].min(value);
+                max[axis] = max[axis].max(value);
+            }
+        }
+        min.iter().all(|value| value.is_finite()).then_some(Self {
+            view_box: path.view_box.map(f32::from_bits),
+            min,
+            max,
+            stroke: path.stroke_width.map(f32::from_bits).unwrap_or(0.0),
+        })
+    }
+
+    /// Includes round caps, joins and half a physical pixel of coverage in virtual coordinates.
+    pub(crate) fn at(self, dest: crate::Rect, pixel: f64) -> crate::Rect {
+        let [x, y, width, height] = self.view_box.map(f64::from);
+        let scale = [dest.w / width, dest.h / height];
+        let padding = f64::from(self.stroke) * scale[0].min(scale[1]) * 0.5 + pixel * 0.5;
+        let min = [
+            dest.x + (f64::from(self.min[0]) - x) * scale[0] - padding,
+            dest.y + (f64::from(self.min[1]) - y) * scale[1] - padding,
+        ];
+        let max = [
+            dest.x + (f64::from(self.max[0]) - x) * scale[0] + padding,
+            dest.y + (f64::from(self.max[1]) - y) * scale[1] + padding,
+        ];
+        crate::Rect::new(min[0], min[1], max[0] - min[0], max[1] - min[1])
+    }
 }
 
 /// Rejects malformed or excessively large path data before allocating raster geometry.
-pub(super) fn parse(data: &BTreeMap<String, Value>) -> Option<Path> {
+pub fn parse(data: &BTreeMap<String, Value>) -> Option<Path> {
     let source_box = data.get("view_box")?.as_array()?;
     if source_box.len() != 4 {
         return None;
@@ -156,4 +212,26 @@ fn cancel_contours(contours: Vec<Vec<[u32; 2]>>) -> Vec<Vec<[u32; 2]>> {
         }
     }
     retained.into_keys().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Coverage bounds follow the view-box origin and the smaller stroke scale on stretched nodes.
+    #[test]
+    fn coverage_bounds_include_round_caps_and_physical_pixel_support() {
+        let data = serde_json::from_value(serde_json::json!({
+            "view_box": [4, 8, 16, 16], "stroke_width": 4,
+            "paths": [[[4, 16], [20, 16]]],
+        }))
+        .unwrap();
+        let bounds = Bounds::new(&parse(&data).unwrap()).unwrap();
+        for width in [16.0, 32.0] {
+            assert_eq!(
+                bounds.at(crate::Rect::new(-width, 0.0, width, 16.0), 0.5),
+                crate::Rect::new(-width - 2.25, 5.75, width + 4.5, 4.5),
+            );
+        }
+    }
 }

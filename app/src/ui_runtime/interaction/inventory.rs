@@ -52,7 +52,7 @@ pub(super) fn apply_screen_presses(
         frame,
         &[],
         focus,
-        now_millis,
+        (now_millis, &mut false),
     );
 }
 
@@ -69,7 +69,7 @@ pub(super) fn apply_inventory_pointer(
     (presses, shift, control): (Vec<semantic_input::KeyboardKey>, bool, bool),
     notches: &[(f32, MouseScrollUnit)],
     mut focus: Option<&mut client_state::CursorFocus>,
-    now_millis: u64,
+    (now_millis, close_armed): (u64, &mut bool),
 ) {
     let primary_pressed = mouse_buttons.just_pressed(MouseButton::Left);
     let secondary_pressed = mouse_buttons.just_pressed(MouseButton::Right);
@@ -104,6 +104,29 @@ pub(super) fn apply_inventory_pointer(
     let physical_size = [window.physical_width(), window.physical_height()];
     let gui = presentation.inventory_gui_point(point, physical_size, window.scale_factor());
     runtime.set_inventory_pointer_gui(gui);
+    // The screen's close button closes it on a release over the button it was pressed on.
+    let on_close = gui
+        .zip(presentation.engine_container_frame())
+        .and_then(|(gui, frame)| {
+            json_ui::hit_test(&frame.hits, [f64::from(gui[0]), f64::from(gui[1])])
+                .filter(|hit| hit.pressed.is_some() && hit.pressed == frame.cancel_target)
+        })
+        .is_some();
+    if primary_pressed {
+        *close_armed = on_close;
+    }
+    if *close_armed {
+        if primary_released {
+            *close_armed = false;
+            if on_close {
+                let _ = runtime.close_inventory(player_runtime);
+                if let Some(focus) = focus.as_deref_mut() {
+                    focus.authorize_screen_return();
+                }
+            }
+        }
+        return;
+    }
     // A player mod's view, or a control of its overlay, owns the pointer (`modding`).
     let mod_owned = presentation
         .mod_ui()

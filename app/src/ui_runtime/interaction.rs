@@ -162,6 +162,7 @@ pub(crate) fn drive_inventory_ui_actions(
     mut runtime: ResMut<UiRuntimeResource>,
     mut focus: Option<ResMut<client_state::CursorFocus>>,
     driven: Option<Res<client_state::DrivenInput>>,
+    mut close_armed: Local<bool>,
 ) {
     let input_available = driven.is_some()
         || (window.focused && focus.as_ref().is_none_or(|focus| focus.available()));
@@ -197,6 +198,7 @@ pub(crate) fn drive_inventory_ui_actions(
         || !runtime.inventory_open()
         || !input_available
     {
+        *close_armed = false;
         runtime.set_inventory_pointer_gui(None);
         runtime.screen_state_mut().hover = None;
         runtime.screen_state_mut().pointer.reset();
@@ -219,7 +221,7 @@ pub(crate) fn drive_inventory_ui_actions(
         (presses, shift, control),
         &notches,
         focus.as_deref_mut(),
-        now_millis,
+        (now_millis, &mut close_armed),
     );
 }
 

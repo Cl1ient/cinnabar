@@ -71,7 +71,7 @@ fn set_files_keep_order_and_per_mod_grants() {
     }
     let many = format!(
         r#"{{"version":1,"mods":[{}]}}"#,
-        vec![r#"{"component":"/a.wasm"}"#; MAX_LOADED_MODS + 1].join(",")
+        [r#"{"component":"/a.wasm"}"#; MAX_LOADED_MODS + 1].join(",")
     );
     write(&many);
     assert!(read_set(&set).is_err());

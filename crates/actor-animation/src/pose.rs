@@ -15,6 +15,7 @@ pub(super) struct LocalDelta {
     pub(super) rotation: [f32; 3],
     pub(super) scale: [f32; 3],
     pub(super) rotation_relative_to_entity: bool,
+    pub(super) legacy_swing: Option<super::legacy_swing::Delta>,
 }
 
 impl Default for LocalDelta {
@@ -24,6 +25,7 @@ impl Default for LocalDelta {
             rotation: [0.0; 3],
             scale: [1.0; 3],
             rotation_relative_to_entity: false,
+            legacy_swing: None,
         }
     }
 }
@@ -58,6 +60,13 @@ pub(super) fn sample_clips(
         ]
     });
     let mut pending: Option<ControllerBlend> = None;
+    let mut legacy_weight = 0.0_f32;
+    let legacy_attack = !evaluator.context.is_local_first_person
+        && super::legacy_swing::ordinary(
+            evaluator.actor,
+            evaluator.context,
+            evaluator.input.swim_amount,
+        );
     for weighted in clips {
         budget.charge_work()?;
         if let (Some(blend), Some(sides)) = (pending, sides.as_mut())
@@ -83,6 +92,27 @@ pub(super) fn sample_clips(
             .animation_clips()
             .get(weighted.clip)
             .ok_or(EvalError::Invalid)?;
+        if legacy_attack {
+            match assets
+                .symbols()
+                .get(clip.symbol as usize)
+                .map(|symbol| symbol.identifier.as_ref())
+            {
+                Some("animation.player.attack.positions") => continue,
+                Some("animation.player.attack.rotations") => {
+                    legacy_weight += weight
+                        * weighted.blend.map_or(1.0, |blend| {
+                            if blend.incoming {
+                                blend.amount
+                            } else {
+                                1.0 - blend.amount
+                            }
+                        });
+                    continue;
+                }
+                _ => {}
+            }
+        }
         if let Some(cacheable) = budget.static_draw.as_mut() {
             *cacheable &= weighted.blend.is_none()
                 && clip.loop_mode != EntityAnimationLoop::Once
@@ -164,6 +194,17 @@ pub(super) fn sample_clips(
     }
     if let (Some(blend), Some(sides)) = (pending, sides.as_mut()) {
         compose_blend(&mut local, sides, blend.amount);
+    }
+    if legacy_weight > 0.0 {
+        super::legacy_swing::apply(
+            bone_names,
+            &mut local,
+            variables
+                .get(evaluator.layout.engine.attack_time)
+                .unwrap_or(evaluator.input.attack_time),
+            evaluator.input.pitch.to_radians(),
+            legacy_weight,
+        )?;
     }
     Ok(local)
 }
@@ -309,7 +350,13 @@ pub(super) fn compose_pose(
     bones: &[RuntimeBone],
     local: &[LocalDelta],
 ) -> Option<Vec<BoneTransform>> {
-    compose_pose_with_targets(bones, local, &[])
+    let baseline = compose_pose_with_targets(bones, local, &[])?;
+    if !local.iter().any(|delta| delta.legacy_swing.is_some()) {
+        return Some(baseline);
+    }
+    // Named skin drivers carry attack deltas, never absolute transforms from another geometry.
+    let targets = super::legacy_swing::targets(&baseline, local);
+    compose_pose_with_targets(bones, local, &targets)
 }
 
 /// Retarget named joints in model space while composing their clothing and other children.

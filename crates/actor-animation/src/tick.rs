@@ -12,6 +12,8 @@ mod cape_tests;
 /// Actor state beyond the snapshot that one tick's evaluation reads.
 #[derive(Clone, Debug, Default)]
 pub struct ActorTickContext {
+    /// Visual attack rules; gameplay clocks remain independent of this profile.
+    pub combat_visuals: render_api::CombatVisuals,
     /// Frame fraction supplied only to scratch render-layer evaluation.
     pub frame_alpha: f32,
     /// Full elapsed visual interval; absent for an explicit single-tick evaluation.

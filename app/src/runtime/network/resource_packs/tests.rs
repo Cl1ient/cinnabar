@@ -160,7 +160,8 @@ fn ui_glint_uses_the_winning_raster_and_restores_the_lower_pack_on_removal() {
         super::collect_server_ui(&view).and_then(|pack| pack.item_glint.clone())
     };
     let base = read(vec![lower()]).unwrap();
-    let winner = read(vec![lower(), upper]).unwrap();
+    // Protocol handoffs list the highest-priority pack first.
+    let winner = read(vec![upper, lower()]).unwrap();
     assert_eq!(winner.dimensions(), [640, 617]);
     assert_eq!(&winner.pixels()[..4], &[0, 200, 0, 255]);
     assert_ne!(winner.identity(), base.identity());

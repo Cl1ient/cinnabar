@@ -92,6 +92,8 @@ pub(super) fn apply_inventory_pointer(
     let screen = InventoryScreen::of_runtime(player_runtime, runtime);
     runtime.observe_inventory_search_focus(player_runtime);
     let Some(position) = window.cursor_position() else {
+        // A cancelled touch withdraws the pointer, so its release closes nothing.
+        *close_armed = false;
         runtime.set_inventory_pointer_gui(None);
         runtime.screen_state_mut().hover = None;
         return;
@@ -104,8 +106,14 @@ pub(super) fn apply_inventory_pointer(
     let physical_size = [window.physical_width(), window.physical_height()];
     let gui = presentation.inventory_gui_point(point, physical_size, window.scale_factor());
     runtime.set_inventory_pointer_gui(gui);
+    // A player mod's view, or a control of its overlay, owns the pointer (`modding`).
+    let mod_owned = presentation
+        .mod_ui()
+        .mod_screens_own([point.x(), point.y()]);
     // The screen's close button closes it on a release over the button it was pressed on.
+    // A mod's view hides the container, so the hidden close button must not arm.
     let on_close = gui
+        .filter(|_| !mod_owned)
         .zip(presentation.engine_container_frame())
         .and_then(|(gui, frame)| {
             json_ui::hit_test(&frame.hits, [f64::from(gui[0]), f64::from(gui[1])])
@@ -127,10 +135,6 @@ pub(super) fn apply_inventory_pointer(
         }
         return;
     }
-    // A player mod's view, or a control of its overlay, owns the pointer (`modding`).
-    let mod_owned = presentation
-        .mod_ui()
-        .mod_screens_own([point.x(), point.y()]);
     let book_open = runtime.screen_state().book_open;
     let reader_mode = runtime
         .screen_state()

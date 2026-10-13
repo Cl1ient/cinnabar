@@ -2970,7 +2970,8 @@ bindings and need no sidecar rebuild. Each item's authored dependencies decide w
 uses this path. Mixed texture and geometry, controller or material overrides retain the
 installed attachable binding against the replacement definitions. Classification uses
 the binding compiler's description inputs and material parser, including inherited
-material defines and skinning variants.
+material defines and skinning variants. The decision combines all variants of each bound
+item; recompiling one keeps its preferred player variant available to the binding compiler.
 Compiles and artwork use the accepted stack's content identity and loaded startup texture-path
 digest, so rebuilding carriers under the same source pin refreshes changed artwork paths.
 Authored pack attachables remain separate. Held pixel meshes and Java raster frames include

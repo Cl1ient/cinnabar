@@ -37,6 +37,9 @@ pub(super) fn collect(
         .filter_map(|(_, bytes)| parse_pack_json(bytes))
         .flat_map(|value| bound_items(&value))
         .collect::<BTreeSet<_>>();
+    let mut installed = Vec::new();
+    let mut changed_items = BTreeSet::new();
+    let mut textured_items = BTreeSet::new();
     let mut directories = vec![root.join("attachables")];
     while let Some(directory) = directories.pop() {
         let Ok(entries) = std::fs::read_dir(directory) else {
@@ -76,22 +79,31 @@ pub(super) fn collect(
             let Some(value) = parse_pack_json(&bytes) else {
                 continue;
             };
-            if bound_items(&value)
-                .iter()
-                .any(|item| authored_items.contains(item))
-            {
+            let items = bound_items(&value);
+            if items.iter().any(|item| authored_items.contains(item)) {
                 continue;
             }
             let mut referenced = BTreeSet::new();
             collect_texture_strings(&value, &mut referenced);
-            if !is_texture_only(&value, &authored_items, overrides, vanilla, inputs)
-                && referenced
-                    .iter()
-                    .any(|stem| texture_stems.contains(stem.as_str()))
-                && let Ok(bytes) = serde_json::to_vec(&value)
+            if referenced
+                .iter()
+                .any(|stem| texture_stems.contains(stem.as_str()))
             {
-                files.push((relative.into(), bytes));
+                textured_items.extend(items.iter().cloned());
             }
+            if !binding_inputs_unchanged(&value, &authored_items, overrides, vanilla, inputs) {
+                changed_items.extend(items.iter().cloned());
+            }
+            installed.push((relative, items, value));
+        }
+    }
+    // Each item's variants share the decision, preserving the compiler's player preference.
+    changed_items.retain(|item| textured_items.contains(item));
+    for (path, items, value) in installed {
+        if items.iter().any(|item| changed_items.contains(item))
+            && let Ok(bytes) = serde_json::to_vec(&value)
+        {
+            files.push((path.into(), bytes));
         }
     }
     // File-system enumeration order must not decide which variant wins compilation.
@@ -112,8 +124,8 @@ fn bound_items(value: &Value) -> Vec<String> {
         .collect()
 }
 
-/// An item uses startup bindings only when the stack changes none of its binding dependencies.
-pub(super) fn is_texture_only(
+/// Checks whether a variant's binding dependencies remain unchanged by the stack.
+pub(super) fn binding_inputs_unchanged(
     document: &Value,
     authored_items: &BTreeSet<String>,
     overrides: &BTreeSet<String>,

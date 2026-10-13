@@ -54,6 +54,138 @@ fn authored_attachables_are_collected_without_loose_base_bindings() {
     assert_eq!(attachables[0].0.as_ref(), "attachables/custom.json");
 }
 
+#[test]
+fn changing_mob_geometry_keeps_the_preferred_player_armour_variant() {
+    let item = "fixture:chestplate";
+    let texture = "textures/items/fixture_armor";
+    let player_geometry = "geometry.fixture.player.chestplate";
+    let mob_geometry = "geometry.fixture.mob.chestplate";
+    let geometry = |identifier: &str, size: [u8; 3]| {
+        json!({
+        "format_version": "1.12.0", "minecraft:geometry": [{
+            "description": {"identifier": identifier, "texture_width": 4, "texture_height": 2},
+            "bones": [{"name": "body", "cubes": [{"origin": [0, 0, 0], "size": size, "uv": [0, 0]}]}]
+        }]
+    }).to_string().into_bytes()
+    };
+    let attachable = |identifier: &str, geometry: &str, texture: &str| {
+        json!({
+            "format_version": "1.10.0", "minecraft:attachable": {"description": {
+                "identifier": identifier, "geometry": {"default": geometry},
+                "textures": {"default": texture}, "materials": {"default": "armor"},
+                "render_controllers": ["controller.render.fixture"]
+            }}
+        })
+    };
+    let png = |color: [u8; 4]| {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(4, 2, image::Rgba(color))
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        bytes.into_inner()
+    };
+    let original = png([10, 20, 30, 255]);
+    let pixels = png([40, 50, 60, 255]);
+    // The dependencies and texture can change in the same variant or different variants.
+    for shared_texture in [true, false] {
+        let root = tempfile::tempdir().unwrap();
+        let mob_texture = if shared_texture {
+            texture
+        } else {
+            "textures/items/fixture_mob"
+        };
+        let mob = attachable(item, mob_geometry, mob_texture);
+        let mut player = attachable(&format!("{item}.player"), player_geometry, texture);
+        player["minecraft:attachable"]["description"]["item"] =
+            json!({(item): "query.owner_identifier == 'minecraft:player'"});
+        let unrelated = attachable("fixture:unrelated", player_geometry, texture);
+        let mut files: Vec<(Box<str>, Vec<u8>)> = vec![
+            ("attachables/fixture.json".into(), mob.to_string().into_bytes()),
+            ("attachables/fixture.player.json".into(), player.to_string().into_bytes()),
+            ("attachables/unrelated.json".into(), unrelated.to_string().into_bytes()),
+            ("models/entity/mob.json".into(), geometry(mob_geometry, [2, 2, 2])),
+            ("models/entity/player.json".into(), geometry(player_geometry, [1, 1, 1])),
+            (format!("{texture}.png").into(), original.clone()),
+            ("render_controllers/fixture.json".into(), json!({
+                "format_version": "1.8.0", "render_controllers": {"controller.render.fixture": {
+                    "geometry": "Geometry.default", "materials": [{"*": "Material.default"}], "textures": ["Texture.default"]
+                }}
+            }).to_string().into_bytes()),
+        ];
+        if !shared_texture {
+            files.push((format!("{mob_texture}.png").into(), original.clone()));
+        }
+        for (path, bytes) in &files {
+            let path = root.path().join(path.as_ref());
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+        let vanilla = pack_compiler::compile_vanilla_entity_refs(root.path()).unwrap();
+        let startup = pack_compiler::compile_actor_pack(files).unwrap().unwrap();
+        assert_eq!(
+            startup
+                .equipment_bindings
+                .iter()
+                .find(|binding| binding.identifier.as_ref() == item)
+                .unwrap()
+                .geometry
+                .identifier
+                .as_ref(),
+            player_geometry
+        );
+        let replacement = geometry(mob_geometry, [3, 4, 5]);
+        let view = resource_pack::LayeredPackView::new(crate::test_support::stack(&[
+            (&format!("{texture}.png"), &pixels),
+            ("models/entity/replacement.json", &replacement),
+        ]));
+        let compiled = pack_compiler::compile_actor_pack(super::collect_files(
+            &view,
+            Some(&vanilla),
+            Some(root.path()),
+        ))
+        .unwrap()
+        .unwrap();
+        let binding = compiled
+            .equipment_bindings
+            .iter()
+            .find(|binding| binding.identifier.as_ref() == item)
+            .unwrap();
+        assert_eq!(binding.geometry.identifier.as_ref(), player_geometry);
+        assert!(
+            compiled
+                .equipment_bindings
+                .iter()
+                .all(|binding| binding.identifier.as_ref() != "fixture:unrelated")
+        );
+        let selected = compiled
+            .entities
+            .geometries
+            .iter()
+            .find(|geometry| geometry.identifier.as_ref() == player_geometry)
+            .unwrap();
+        assert_eq!(
+            selected.bones[0].cubes[0].size.map(|value| value.get()),
+            [1.0; 3]
+        );
+        let mob = compiled
+            .entities
+            .geometries
+            .iter()
+            .find(|geometry| geometry.identifier.as_ref() == mob_geometry)
+            .unwrap();
+        assert_eq!(
+            mob.bones[0].cubes[0].size.map(|value| value.get()),
+            [3.0, 4.0, 5.0]
+        );
+        let artwork = compiled
+            .equipment_textures
+            .iter()
+            .find(|image| image.identifier.as_ref() == texture)
+            .unwrap();
+        assert_eq!(&artwork.rgba8[..4], &[40, 50, 60, 255]);
+    }
+}
+
 fn archive(id: u128, material: serde_json::Value) -> protocol::ResourcePackArchive {
     let id = format!("00000000-0000-0000-0000-{id:012x}");
     let manifest = json!({"format_version":2,"header":{"uuid":id,"version":[1,0,0]},
@@ -268,7 +400,7 @@ fn vanilla_texture_lookup_does_not_leave_the_pack_root() {
 
 #[test]
 fn artwork_only_is_decided_from_each_items_authored_dependencies() {
-    use super::attachables::is_texture_only;
+    use super::attachables::binding_inputs_unchanged;
     use std::collections::BTreeSet;
     let document = json!({"format_version": "1.10.0", "minecraft:attachable": {"description": {
         "identifier": "fixture:coat.player", "item": {"fixture:coat": "1"},
@@ -282,7 +414,7 @@ fn artwork_only_is_decided_from_each_items_authored_dependencies() {
     let inputs = pack_compiler::EquipmentBindingDependencies::default();
     let authored = BTreeSet::new();
     let unrelated = BTreeSet::from(["geometry.other".into(), "controller.render.other".into()]);
-    assert!(is_texture_only(
+    assert!(binding_inputs_unchanged(
         &document,
         &authored,
         &unrelated,
@@ -302,7 +434,7 @@ fn artwork_only_is_decided_from_each_items_authored_dependencies() {
         "armor_leather_enchanted",
     ] {
         assert!(
-            !is_texture_only(
+            !binding_inputs_unchanged(
                 &document,
                 &authored,
                 &BTreeSet::from([changed.into()]),
@@ -312,7 +444,7 @@ fn artwork_only_is_decided_from_each_items_authored_dependencies() {
             "{changed}"
         );
     }
-    assert!(!is_texture_only(
+    assert!(!binding_inputs_unchanged(
         &document,
         &BTreeSet::from(["fixture:coat".into()]),
         &BTreeSet::new(),
@@ -325,14 +457,14 @@ fn artwork_only_is_decided_from_each_items_authored_dependencies() {
         "geometry.fixture.parent".into(),
     );
     let parent = BTreeSet::from(["geometry.fixture.parent".into()]);
-    assert!(!is_texture_only(
+    assert!(!binding_inputs_unchanged(
         &document,
         &authored,
         &parent,
         Some(&vanilla),
         Some(&inputs)
     ));
-    assert!(!is_texture_only(
+    assert!(!binding_inputs_unchanged(
         &document,
         &authored,
         &BTreeSet::new(),
@@ -343,7 +475,7 @@ fn artwork_only_is_decided_from_each_items_authored_dependencies() {
 
 #[test]
 fn artwork_only_checks_installed_material_parents_and_skinning_variants() {
-    use super::attachables::is_texture_only;
+    use super::attachables::binding_inputs_unchanged;
     use std::collections::BTreeSet;
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("materials")).unwrap();
@@ -380,7 +512,7 @@ fn artwork_only_checks_installed_material_parents_and_skinning_variants() {
             pack_compiler::EquipmentBindingDependencies::load(Some(root.path()), Some(&authored))
                 .unwrap();
         assert_eq!(
-            is_texture_only(
+            binding_inputs_unchanged(
                 &document,
                 &BTreeSet::new(),
                 inputs.authored_materials(),

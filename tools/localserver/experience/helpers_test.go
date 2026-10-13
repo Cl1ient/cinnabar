@@ -95,14 +95,17 @@ func buildHelpers(ctx context.Context, scratch string) error {
 		return err
 	}
 	repoRoot = root
-	// Separate build directories let the host and guest compile together. Reserve one Cargo
-	// job for the guest; a single-CPU runner admits only one build process at a time.
+	// Reserve one job for the guest; a one-job budget runs the builds in sequence.
 	type artifact struct {
 		path string
 		err  error
 	}
-	cpus := min(runtime.NumCPU(), runtime.GOMAXPROCS(0))
-	slots := make(chan struct{}, min(cpus, 2))
+	jobs, err := helperBuildJobs(runtime.NumCPU(), os.Getenv("CARGO_BUILD_JOBS"))
+	if err != nil {
+		return err
+	}
+	jobs = min(jobs, runtime.GOMAXPROCS(0))
+	slots := make(chan struct{}, min(jobs, 2))
 	faults := make(chan error, 1)
 	// buildArtifact reports the first build failure before canceling its sibling.
 	buildArtifact := func(target string, args ...string) artifact {
@@ -121,7 +124,7 @@ func buildHelpers(ctx context.Context, scratch string) error {
 	host := make(chan artifact, 1)
 	go func() {
 		host <- buildArtifact("experience-runtime", "build", "-p", "experience-runtime", "--locked",
-			"--jobs", strconv.Itoa(max(cpus-1, 1)))
+			"--jobs", strconv.Itoa(max(jobs-1, 1)))
 	}()
 	guestTarget := filepath.Join(root, "target", "experience-guests")
 	guest := buildArtifact("experience_probe",
@@ -141,8 +144,7 @@ func buildHelpers(ctx context.Context, scratch string) error {
 	if runtime.GOOS == "windows" {
 		fakeHelperBinary += ".exe"
 	}
-	build := exec.CommandContext(ctx, "go", "build", "-o", fakeHelperBinary, "./testdata/fakehelper")
-	build.WaitDelay = helperPipeWaitDelay
+	build := helperBuildCommand(ctx, "go", "build", "-o", fakeHelperBinary, "./testdata/fakehelper")
 	if out, err := build.CombinedOutput(); err != nil {
 		return fmt.Errorf("building the fake helper: %v\n%s", err, out)
 	}
@@ -152,8 +154,7 @@ func buildHelpers(ctx context.Context, scratch string) error {
 // cargoArtifact runs cargo within ctx and returns the executable or .wasm it built for target.
 func cargoArtifact(ctx context.Context, root, target string, args ...string) (string, error) {
 	fmt.Fprintf(os.Stderr, "experience tests: preparing %s\n", target)
-	cmd := exec.CommandContext(ctx, "cargo", append(args, "--message-format=json-render-diagnostics")...)
-	cmd.WaitDelay = helperPipeWaitDelay
+	cmd := helperBuildCommand(ctx, "cargo", append(args, "--message-format=json-render-diagnostics")...)
 	cmd.Dir = root
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

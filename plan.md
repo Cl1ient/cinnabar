@@ -6379,12 +6379,14 @@ other 1.10 JSON items (icon from resource-pack data), spawn eggs (per-entity
 map), bow/crossbow draw frames, trimmed armor and broken elytra overrides, and
 native icon acceptance.
 Compasses and clocks animate: the icon carrier bakes every frame of the native
-`compass_atlas` and `watch_atlas` strips, and the local player's needles follow
+`compass_atlas`, `recovery_compass_atlas` and `watch_atlas` strips, and the local player's needles follow
 the native sprite calculators once per tick (compass toward the world spawn,
 clock by the celestial angle, both spinning outside the Overworld, with the
 native 0.1 pull and 0.8 damping). Inventory, held and dropped dials share the
-local player's frame, where the native client reads each holder; lodestone and
-recovery compasses and item-frame headings remain open.
+local player's frame, where the native client reads each holder. Recovery
+compasses aim at the player's last death (actor data 127 to 129, kept across
+dimension changes) in its own dimension and spin elsewhere. Lodestone compasses
+and item-frame headings remain open.
 Block items (provisional, incomplete): an item the retail client gives a legacy
 icon, or one placing a differently named block, keeps its sprite over its block
 route. Flat-shape blocks (cross plants, torches, rails, panes, ladders, lanterns,

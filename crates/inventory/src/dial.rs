@@ -125,6 +125,7 @@ impl DialNeedle {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DialFrames {
     pub compass: Option<u32>,
+    pub recovery_compass: Option<u32>,
     pub clock: Option<u32>,
 }
 
@@ -134,6 +135,7 @@ impl DialFrames {
     pub const fn frame(&self, kind: assets::DialKind) -> Option<u32> {
         match kind {
             assets::DialKind::Compass => self.compass,
+            assets::DialKind::RecoveryCompass => self.recovery_compass,
             assets::DialKind::Clock => self.clock,
         }
     }
@@ -261,6 +263,7 @@ mod tests {
     fn dials_show_their_carried_frame_and_other_items_keep_their_icon() {
         let frames = DialFrames {
             compass: Some(5),
+            recovery_compass: None,
             clock: Some(3),
         };
         let carried = catalog(COMPASS_FRAMES);

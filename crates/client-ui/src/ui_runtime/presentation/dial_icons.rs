@@ -98,6 +98,7 @@ mod tests {
         assert_eq!(still, presentation.item_icon("minecraft:compass", 0));
         presentation.set_dial_frames(inventory::DialFrames {
             compass: Some(7),
+            recovery_compass: None,
             clock: Some(3),
         });
         assert_eq!(

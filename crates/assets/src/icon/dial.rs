@@ -7,6 +7,8 @@ use super::RuntimeIconCatalog;
 pub enum DialKind {
     /// Points at the world spawn in natural dimensions and spins elsewhere.
     Compass,
+    /// Points at the player's last death in its dimension and spins elsewhere.
+    RecoveryCompass,
     /// Shows the sky's celestial angle in natural dimensions and spins elsewhere.
     Clock,
 }
@@ -22,12 +24,18 @@ pub struct DialStrip {
 }
 
 /// Every dial item the icon carrier bakes frames for.
-pub const DIAL_STRIPS: [DialStrip; 2] = [
+pub const DIAL_STRIPS: [DialStrip; 3] = [
     DialStrip {
         item: "minecraft:compass",
         kind: DialKind::Compass,
         strip_path: "textures/items/compass_atlas.png",
         frames_identifier: "minecraft:compass_atlas",
+    },
+    DialStrip {
+        item: "minecraft:recovery_compass",
+        kind: DialKind::RecoveryCompass,
+        strip_path: "textures/items/recovery_compass_atlas.png",
+        frames_identifier: "minecraft:recovery_compass_atlas",
     },
     DialStrip {
         item: "minecraft:clock",

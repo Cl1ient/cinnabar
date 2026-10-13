@@ -1,24 +1,15 @@
 name: Android
 
-# Builds the experimental arm64 APK so CI proves the Android target still compiles. The APK is
-# signed with a throwaway key per run; installing a later build means uninstalling first.
+# Builds the experimental arm64 APK for Android packaging changes, on CI's schedule and on
+# demand, so the Android target keeps compiling. The APK is signed with a throwaway key per run;
+# installing a later build means uninstalling first.
 on:
   pull_request:
     paths:
-      - app/**
-      - crates/**
-      - core/**
       - packaging/android/**
-      - packaging/common/**
-      - assets/**
-      - Cargo.toml
-      - Cargo.lock
-      - go.work
-      - go.work.sum
-      - rust-toolchain.toml
       - .github/workflows/android.yml
-  push:
-    branches: [dev]
+  schedule:
+    - cron: "41 */6 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -34,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      # Parallel codegen without LTO keeps this compile check affordable; releases use `release`.
+      # Parallel codegen without LTO keeps this build affordable; releases use `release`.
       CINNABAR_ANDROID_PROFILE: play
       CARGO_INCREMENTAL: "0"
     steps:

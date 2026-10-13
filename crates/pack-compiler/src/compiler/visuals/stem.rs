@@ -117,7 +117,7 @@ fn connector_quad(material: u32, facing: u8) -> ModelQuad {
             [128, 240, 0],
         ]
     };
-    let u = if matches!(facing, 2 | 5) { 0 } else { 4096 };
+    let u = if matches!(facing, 2 | 5) { 4096 } else { 0 };
     ModelQuad {
         positions,
         uvs: [[u, 0], [u, 4096], [4096 - u, 4096], [4096 - u, 0]],

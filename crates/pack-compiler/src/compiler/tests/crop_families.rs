@@ -63,8 +63,16 @@ fn fixture() -> (RuntimeAssets, Vec<RegistryRecord>) {
                 let path = format!("textures/{key}_{index}");
                 let pixels = (0..TILE_SIZE)
                     .flat_map(|y| {
-                        (0..TILE_SIZE)
-                            .flat_map(move |x| [tag + index as u8, x as u8 * 4, y as u8 * 4, 255])
+                        (0..TILE_SIZE).flat_map(move |x| {
+                            // The connected stem's branch occupies only the left half.
+                            let alpha =
+                                if key.ends_with("_stem") && index == 1 && x >= TILE_SIZE / 2 {
+                                    0
+                                } else {
+                                    255
+                                };
+                            [tag + index as u8, x as u8 * 4, y as u8 * 4, alpha]
+                        })
                     })
                     .collect::<Vec<_>>();
                 write_png(
@@ -146,12 +154,20 @@ fn quads<'a>(
 
 /// Identifies the original sprite without relying on compiler material numbering.
 fn art(runtime: &RuntimeAssets, material: u32) -> u8 {
+    sprite_pixel(runtime, material, [0, 0])[0]
+}
+
+/// Reads a fixture sprite pixel at normalized texture coordinates in 1/4096 units.
+fn sprite_pixel(runtime: &RuntimeAssets, material: u32, uv: [u16; 2]) -> [u8; 4] {
     let texture = runtime.materials()[material as usize].texture;
     let mip = &runtime.texture_pages()[texture.page() as usize]
         .texture
         .mips[0];
     let offset = texture.layer() as usize * (mip.size * mip.size * 4) as usize;
-    mip.rgba8[offset]
+    let [x, y] =
+        uv.map(|value| (usize::from(value) * mip.size as usize / 4096).min(mip.size as usize - 1));
+    let pixel = offset + (y * mip.size as usize + x) * 4;
+    mip.rgba8[pixel..pixel + 4].try_into().unwrap()
 }
 
 #[test]
@@ -214,10 +230,6 @@ fn stems_grow_from_the_soil_and_keep_their_upright_sprite_when_attached() {
                 assert!(connector.positions.iter().all(|p| p[axis] == 128));
                 assert_eq!(connector.positions.iter().map(|p| p[1]).min(), Some(-16));
                 assert_eq!(connector.positions.iter().map(|p| p[1]).max(), Some(240));
-                assert_eq!(
-                    connector.uvs[0][0],
-                    if matches!(facing, 2 | 5) { 0 } else { 4096 }
-                );
             } else {
                 growth_materials
                     .entry(record.name.clone())
@@ -233,6 +245,52 @@ fn stems_grow_from_the_soil_and_keep_their_upright_sprite_when_attached() {
             .all(|materials| materials.len() == 8),
         "each growth stage has its own colour"
     );
+}
+
+#[test]
+fn attached_stem_branches_point_toward_the_fruit() {
+    let (runtime, records) = fixture();
+    let mut count = 0;
+    for record in records
+        .iter()
+        .filter(|record| record.name.ends_with("_stem"))
+    {
+        let (axis, fruit_edge) = match property(record, "facing_direction") {
+            2 => (2, 0),   // North.
+            3 => (2, 256), // South.
+            4 => (0, 0),   // West.
+            5 => (0, 256), // East.
+            _ => continue,
+        };
+        count += 1;
+        for mode in [NetworkIdMode::Sequential, NetworkIdMode::Hashed] {
+            let connector = &quads(&runtime, record, mode)[2];
+            let (fruit, away) = if connector.positions[1][axis] == fruit_edge {
+                (1, 2)
+            } else {
+                (2, 1)
+            };
+            assert_eq!(connector.positions[fruit][axis], fruit_edge);
+            // Sample halfway from the stem centre toward each world-space endpoint.
+            let fruit_u = (3 * connector.uvs[fruit][0] + connector.uvs[away][0]) / 4;
+            let away_u = (connector.uvs[fruit][0] + 3 * connector.uvs[away][0]) / 4;
+            assert_eq!(
+                sprite_pixel(&runtime, connector.material, [fruit_u, 2048])[3],
+                255,
+                "branch must face the fruit: {} {} {mode:?}",
+                record.name,
+                record.canonical_state
+            );
+            assert_eq!(
+                sprite_pixel(&runtime, connector.material, [away_u, 2048])[3],
+                0,
+                "opposite side must be transparent: {} {} {mode:?}",
+                record.name,
+                record.canonical_state
+            );
+        }
+    }
+    assert_eq!(count, 64);
 }
 
 #[test]

@@ -300,8 +300,8 @@ pub(crate) fn mesh_change_has_publication_permit(change: &WorldMeshChange) -> bo
     }
 }
 
-/// Diagnostics, player state and correction history the world poll reads beside its stream.
-type WorldPollExtras<'w, 's> = (
+/// Diagnostics, player authority and per-system correction history used while polling the world.
+type WorldPollInputs<'w, 's> = (
     Option<Res<'w, VisibilityDiagnosticsInput>>,
     Option<Res<'w, RuntimeStageProfiler>>,
     ResMut<'w, client_state::PlayerRuntime>,
@@ -332,7 +332,7 @@ pub(crate) fn reconcile_world_stream_before_physics(
         mut player_runtime,
         server_camera_view,
         mut correction_log,
-    ): WorldPollExtras,
+    ): WorldPollInputs<'_, '_>,
 ) {
     let _timer = profiler
         .as_deref()

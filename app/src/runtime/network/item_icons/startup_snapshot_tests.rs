@@ -1,40 +1,21 @@
 //! A locally supplied pack witnesses startup icon retention through the rendered hotbar.
 
+use super::startup_fixture::{ICON, IDENTIFIER, NETWORK_ID, local_view};
 use super::*;
 use assets::{RuntimeUiAssets, UiAtlasPage, UiFile, UiTexturePlacement, encode_ui_catalog};
-use client_ui::ui_runtime::{
-    UiRuntime,
-    presentation::{UiPresentationRuntime, refresh_hud_frame},
-};
-use protocol::{
-    ContainerIdentity, InventoryContentEvent, InventoryEvent, NetworkItemStack, PlayerGameMode,
-    WorldBootstrap,
-};
+use client_ui::ui_runtime::presentation::{UiPresentationRuntime, refresh_hud_frame};
 use serde_json::json;
 use ui::DpiScale;
 
-const IDENTIFIER: &str = "fixture:custom_sword";
-const ICON: &str = "plutonium_sword";
-const NETWORK_ID: i16 = 5;
-const PLAYER_ID: u64 = 42;
-const VIEWPORT: [u32; 2] = [1280, 720];
+const VIEWPORT: [u32; 2] = [800, 600];
 
 #[test]
 fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
-    let Some(pack) = std::env::var_os("CINNABAR_RENDER_PACK") else {
-        eprintln!(
-            "skipping startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar: missing CINNABAR_RENDER_PACK fixture"
-        );
+    let Some(view) =
+        local_view("startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar")
+    else {
         return;
     };
-    if !std::path::Path::new(&pack).is_file() {
-        eprintln!(
-            "skipping startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar: missing CINNABAR_RENDER_PACK archive"
-        );
-        return;
-    }
-    let view = super::super::local_pack::local_pack_view_at(std::path::Path::new(&pack))
-        .expect("local fixture pack");
     let startup = protocol::test_support::items::startup_with_item_icons(&[
         (IDENTIFIER, NETWORK_ID, Some(ICON)),
         (IDENTIFIER, NETWORK_ID, None),
@@ -43,55 +24,14 @@ fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
         .items
         .registry
         .expect("compatible duplicate registry");
-    let mut stream = chunk_pipeline::WorldStream::new(WorldBootstrap {
-        local_player_unique_id: 1,
-        dimension: 0,
-        local_player_runtime_id: PLAYER_ID,
-        player_position: [0., 64., 0.],
-        world_spawn_position: [0, 64, 0],
-        air_network_id: 0,
-        block_network_ids_are_hashes: false,
-    });
-    assert!(stream.seed_item_registry(registry.clone()));
-    let mut player = player_state::PlayerState::new(1);
-    let mut runtime = UiRuntime::new(1);
-    runtime.publish_inventory_authority(&mut player, protocol::InventoryAuthority::Server);
-    runtime
-        .publish_local_runtime_id(&mut player, 1, PLAYER_ID)
-        .unwrap();
-    runtime
-        .enqueue_item_registry_event(&mut player, 1, 1, registry)
-        .unwrap();
-    let mut slots =
-        vec![NetworkItemStack::empty(); inventory::inventory_ledger::PLAYER_INVENTORY_SLOT_COUNT];
-    slots[0] = NetworkItemStack {
-        network_id: i32::from(NETWORK_ID),
-        count: 1,
-        stack_network_id: 1,
-        ..NetworkItemStack::empty()
-    };
-    runtime
-        .enqueue_inventory_event(
-            &mut player,
-            1,
-            2,
-            InventoryEvent::Content(InventoryContentEvent {
-                container: ContainerIdentity::window(0),
-                slots: slots.into(),
-                storage_item: NetworkItemStack::empty(),
-            }),
-        )
-        .unwrap();
-    runtime.drain_pending_inventory(&mut player);
-    player.inventory.set_local_selected_slot(0);
-    player
-        .facts
-        .publish_player_game_mode(PlayerGameMode::Survival);
-    runtime.set_session_icons(compile_session_icons(
-        &view,
-        &startup.items.icon_keys,
-        BlockIcons::default(),
-    ));
+    let super::startup_fixture::SelectedInventory {
+        stream,
+        player,
+        mut runtime,
+    } = super::startup_fixture::selected_inventory(registry);
+    let icons = compile_session_icons(&view, &startup.items.icon_keys, BlockIcons::default());
+    let has_icons = icons.is_some();
+    runtime.set_session_icons(icons);
     let mut presentation = UiPresentationRuntime::with_hud(
         ui_engine::test_support::fixture_font(),
         client_ui::test_support::fixture_hud(),
@@ -99,12 +39,18 @@ fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
     .unwrap();
     presentation.enable_json_ui(hotbar_carrier()).unwrap();
     presentation.set_gui_scale_preference(Some(4));
-    test_time::eventually("the startup sword icon to be admitted", || {
-        presentation
-            .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
-            .unwrap();
-        presentation.item_icon(IDENTIFIER, 0).is_some()
-    });
+    let icon_generation = presentation.session_icon_generation();
+    presentation
+        .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
+        .unwrap();
+    if has_icons {
+        test_time::eventually("the compiled icon atlas to be admitted", || {
+            presentation
+                .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
+                .unwrap();
+            presentation.session_icon_generation() != icon_generation
+        });
+    }
     refresh_hud_frame(
         &player,
         &mut runtime,
@@ -156,7 +102,17 @@ fn hotbar_carrier() -> Arc<RuntimeUiAssets> {
         }
     })).collect::<Vec<_>>();
     let hud = json!({"namespace":"hud", "hud_screen": {
-        "type":"screen", "controls":[{"fixture_bar": {
+        "type":"screen", "controls":[{"fixture_item_closeup": {
+            "type":"panel", "size":[120,120],
+            "anchor_from":"center", "anchor_to":"center", "offset":[0,-20],
+            "collection_name":"hotbar_items", "collection_index":0,
+            "controls":[
+                {"background":{"type":"custom", "renderer":"hotbar_renderer", "size":[120,120], "collection_index":0}},
+                {"icon":{"type":"custom", "renderer":"inventory_item_renderer", "size":[112,112], "collection_index":0,
+                    "anchor_from":"top_left", "anchor_to":"top_left", "offset":[4,4], "layer":1,
+                    "bindings":[{"binding_type":"collection", "binding_collection_name":"hotbar_items", "binding_name":"#item_renderer_data"}]}}
+            ]
+        }}, {"fixture_bar": {
             "type":"panel", "size":[182,22], "offset":[0,-12],
             "anchor_from":"bottom_middle", "anchor_to":"bottom_middle",
             "collection_name":"hotbar_items", "controls":controls

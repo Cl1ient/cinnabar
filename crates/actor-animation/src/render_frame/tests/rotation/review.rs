@@ -1,5 +1,6 @@
 use super::*;
 
+mod cache;
 mod selected_geometry;
 use assets::{
     CompiledEntityAssets, EntityAssetKind, EntityAssetSymbol, MolangSymbol, MolangSymbolKind,

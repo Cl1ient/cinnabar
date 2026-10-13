@@ -12,6 +12,7 @@ pub(super) mod sampling;
 use motion_endpoint::{MotionEndpoint, MotionEndpointState};
 
 /// Completed slices stay borrowed; sampled layers own only their frame's changed pose data.
+#[derive(Clone)]
 pub struct ActorRenderLayers<'a> {
     pub render: Cow<'a, [RenderTextureLayer]>,
     pub skin: Cow<'a, [SkinRenderLayer]>,
@@ -25,7 +26,7 @@ pub struct ActorRenderFrame<'a> {
     camera_position: [f32; 3],
     alpha: f32,
     remaining_ops: usize,
-    sampled_layers: HashMap<u64, Option<Cow<'a, [RenderTextureLayer]>>>,
+    sampled_layers: HashMap<u64, Option<ActorRenderLayers<'a>>>,
 }
 
 impl<'a> ActorRenderFrame<'a> {
@@ -120,38 +121,43 @@ impl<'a> ActorRenderFrame<'a> {
         )
     }
 
-    /// Samples authored scale before admission and caches its layers for the same draw.
-    /// Ordinary rigs retain their tick scale without evaluating layer expressions.
-    pub fn sample_rig_scale(&mut self, mut rig: ActorRigSnapshot<'a>) -> ActorRigSnapshot<'a> {
-        let id = rig.actor.runtime_id;
-        if self.samples_rig_scale(id) {
-            let layers = self.sampled_layers.entry(id).or_insert_with(|| {
+    /// Retains one body, render and persona result for every consumer of this frame.
+    fn cached_layers(&mut self, runtime_id: u64) -> Option<&ActorRenderLayers<'a>> {
+        self.sampled_layers
+            .entry(runtime_id)
+            .or_insert_with(|| {
                 Self::sample(
                     self.store,
                     self.actors,
                     (self.camera_rotation, self.camera_position, self.alpha),
-                    id,
+                    runtime_id,
                     &mut self.remaining_ops,
-                    false,
+                    true,
                 )
-                .map(|layers| layers.render)
-            });
-            if let Some(scale) = layers
-                .as_ref()
-                .and_then(|layers| layers.iter().find_map(|layer| layer.sampled_scale))
-            {
-                rig.scale = scale[0];
-                rig.axis_scale = [scale[1], scale[2], scale[3]];
-            }
+            })
+            .as_ref()
+    }
+
+    /// Samples authored scale before admission and caches its layers for the same draw.
+    /// Ordinary rigs retain their tick scale without evaluating layer expressions.
+    pub fn sample_rig_scale(&mut self, mut rig: ActorRigSnapshot<'a>) -> ActorRigSnapshot<'a> {
+        let id = rig.actor.runtime_id;
+        if self.samples_rig_scale(id)
+            && let Some(scale) = self
+                .cached_layers(id)
+                .and_then(|layers| layers.render.iter().find_map(|layer| layer.sampled_scale))
+        {
+            rig.scale = scale[0];
+            rig.axis_scale = [scale[1], scale[2], scale[3]];
         }
         rig
     }
 
-    /// Samples authored frame queries without committing variables, clocks or poses.
+    /// Shares the frame's sampled layers without committing variables, clocks or poses.
     /// Unsupported or exhausted evaluations retain the completed tick's layers.
     pub fn layers(&mut self, runtime_id: u64) -> Option<Cow<'a, [RenderTextureLayer]>> {
-        if let Some(layers) = self.sampled_layers.remove(&runtime_id) {
-            return layers;
+        if let Some(layers) = self.sampled_layers.get(&runtime_id) {
+            return layers.as_ref().map(|layers| layers.render.clone());
         }
         Self::sample(
             self.store,
@@ -167,25 +173,10 @@ impl<'a> ActorRenderFrame<'a> {
     /// Samples possible Always rigs and retains the same frame layers for the eventual draw.
     /// Ordinary materials do not spend the shared frame budget during occlusion checks.
     pub fn has_always_depth_material(&mut self, runtime_id: u64) -> bool {
-        if !self.may_use_always_depth_material(runtime_id) {
-            return false;
-        }
-        self.sampled_layers
-            .entry(runtime_id)
-            .or_insert_with(|| {
-                Self::sample(
-                    self.store,
-                    self.actors,
-                    (self.camera_rotation, self.camera_position, self.alpha),
-                    runtime_id,
-                    &mut self.remaining_ops,
-                    false,
-                )
-                .map(|layers| layers.render)
-            })
-            .as_ref()
-            .is_some_and(|layers| {
+        self.may_use_always_depth_material(runtime_id)
+            && self.cached_layers(runtime_id).is_some_and(|layers| {
                 layers
+                    .render
                     .iter()
                     .any(|layer| layer.material_state.is_some_and(|state| state.depth_always))
             })
@@ -205,17 +196,7 @@ impl<'a> ActorRenderFrame<'a> {
 
     /// Samples the native body and its persona skeletons once under the same frame budget.
     pub fn layers_with_skin(&mut self, runtime_id: u64) -> Option<ActorRenderLayers<'a>> {
-        let sampled = Self::sample(
-            self.store,
-            self.actors,
-            (self.camera_rotation, self.camera_position, self.alpha),
-            runtime_id,
-            &mut self.remaining_ops,
-            true,
-        )?;
-        self.sampled_layers
-            .insert(runtime_id, Some(sampled.render.clone()));
-        Some(sampled)
+        self.cached_layers(runtime_id).cloned()
     }
 }
 
@@ -937,29 +918,21 @@ impl ActorAnimationStore {
             }
         }
         let skin = match sampled_local.as_deref().filter(|_| sample_skin) {
-            Some(local) if !state.skin_layers.is_empty() => {
-                let Ok(skin) = skin_layers::sample(
-                    state,
-                    &evaluator,
-                    &variables,
-                    (local, sampled_previous_local.as_deref()),
-                    Some(&layers),
-                    &mut budget,
-                ) else {
-                    return Some(completed());
-                };
-                Cow::Owned(skin)
-            }
+            Some(local) if !state.skin_layers.is_empty() => skin_layers::sample(
+                state,
+                &evaluator,
+                &variables,
+                (local, sampled_previous_local.as_deref()),
+                Some(&layers),
+                &mut budget,
+            )
+            .map(Cow::Owned),
             _ if sample_skin && !state.skin_layers.is_empty() => {
-                let Ok(skin) =
-                    skin_layers::refresh(state, &evaluator, &variables, &layers, &mut budget)
-                else {
-                    return Some(completed());
-                };
-                skin
+                skin_layers::refresh(state, &evaluator, &variables, &layers, &mut budget)
             }
-            _ => Cow::Borrowed(state.skin_layers.as_slice()),
-        };
+            _ => Ok(Cow::Borrowed(state.skin_layers.as_slice())),
+        }
+        .unwrap_or_else(|_| Cow::Borrowed(state.skin_layers.as_slice()));
         Some(ActorRenderLayers {
             render: Cow::Owned(layers),
             skin,

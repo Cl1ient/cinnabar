@@ -56,6 +56,20 @@ impl DeltaGroup {
         std::iter::once(first).chain(second)
     }
 
+    /// Whether a touched cell keeps its original item while this operation changes its count.
+    pub(super) fn retains_item_at(&self, cell: Cell) -> bool {
+        match self {
+            Self::Transfer {
+                source,
+                destination,
+                destination_id,
+                ..
+            } => *source == cell || (*destination == cell && destination_id.is_some()),
+            Self::Shrink { source, .. } => *source == cell,
+            Self::Swap { .. } | Self::Set { .. } => false,
+        }
+    }
+
     /// Applies this group to `cells`, reporting whether it held.
     pub(super) fn apply(&self, cells: &mut Cells) -> bool {
         match self {
@@ -146,6 +160,11 @@ fn transfer(
         // restates either one.
         (None, None) => {
             let mut moved = from.clone();
+            if partial {
+                // The split-off stack gets a new identity when its prediction is stamped.
+                moved.source_stack_id = None;
+                moved.acknowledged_request_id = None;
+            }
             moved.stack.count = amount;
             moved
         }

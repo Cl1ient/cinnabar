@@ -44,6 +44,62 @@ impl PlayerInventoryLedger {
         self.view().get(target.cell())?.overlay.as_ref()
     }
 
+    /// Whether the target retains this item through moves, predictions or accepted corrections.
+    /// Fresh slot and content writes reset its source identity; replacements carry their own.
+    #[must_use]
+    pub fn target_retains_stack_id(
+        &self,
+        target: super::InventoryTarget,
+        previous_stack_id: i32,
+    ) -> bool {
+        let cell = target.cell();
+        let Some(held) = self.view().get(cell) else {
+            return false;
+        };
+        let mut current_id = held.stack.stack_network_id;
+        if held.source_stack_id == Some(previous_stack_id)
+            || current_id == previous_stack_id
+            || held.acknowledged_request_id == Some(previous_stack_id)
+        {
+            return true;
+        }
+        for request in self.queue.iter().rev() {
+            if request.request_id != current_id {
+                continue;
+            }
+            let Some(prediction) = request
+                .predicted
+                .iter()
+                .find(|prediction| prediction.cell == cell)
+            else {
+                return false;
+            };
+            let Some(before) = &prediction.before else {
+                return false;
+            };
+            let mut touched = false;
+            for group in &request.groups {
+                if group.touched().any(|candidate| candidate == cell) {
+                    touched = true;
+                    if !group.retains_item_at(cell) {
+                        return false;
+                    }
+                }
+            }
+            if !touched {
+                return false;
+            }
+            current_id = before.stack.stack_network_id;
+            if before.source_stack_id == Some(previous_stack_id)
+                || current_id == previous_stack_id
+                || before.acknowledged_request_id == Some(previous_stack_id)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     /// The authoritative response overlay retained for the cursor cell.
     #[must_use]
     pub fn cursor_overlay(&self) -> Option<&StackResponseOverlay> {

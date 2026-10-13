@@ -420,6 +420,29 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 - Exact texture rotation/crop parity remains incomplete; the models retain provisional support
   until a matching native directional gallery verifies texel orientation. No parity gate closes.
 
+## Anvil screen
+
+- The anvil predicts its result and cost: repair materials restore a
+  quarter of the durability each for a level each, a second damaged copy adds its remaining
+  durability plus 12% for two levels, and enchantments merge by the native registry's slots,
+  caps, rarity multipliers and exclusivity. A second item that changes nothing clears the
+  result; renaming adds a level, and a rename alone stays below 40 levels and keeps the
+  prior-work penalty, which other takes double plus one.
+- The name box prefills from each new target. The result slot and its tooltip show the
+  server's output when supplied, otherwise the prediction. For predictions, the cost
+  line turns green or red by the player's levels or shows "Too Expensive!", and the cross
+  marks a target that makes nothing. Taking a prediction sends that result and consumes the
+  materials it uses; server outputs keep their authoritative take path. Predictions retain
+  complete enchantment levels and lists and decline unsupported enchantment fields.
+- Predictions apply retained server damage and name corrections to both inputs and the
+  resulting item data. Unchanged prefilled names retain whitespace. Server outputs suppress
+  local cost and invalid-result indicators. Damage-only corrections preserve edits in progress;
+  a changed authoritative name refreshes the prefill, while acknowledgements that echo its
+  effective name preserve edits regardless of whether the name comes from NBT or a response.
+- Provisional: repair materials and item enchantment slots follow vanilla item names rather
+  than each item's native registration, and data-driven anvil recipes are not predicted.
+  Current-version visual and behavior parity remains incomplete; no anvil parity gate closes.
+
 ## OreUI menus, appearance and motion
 
 - Home, Pause, Play, Inbox, world creation, Accounts and confirmation dialogs use shared OreUI
@@ -468,6 +491,7 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 ## Shipped OreUI fonts
 
 - Pack labels requesting `MinecraftTen` select Cinnangles Ten while retaining the authored text.
+  Outline label sizing keeps bold and italic effects in display units, including caret advances.
   Server-form item controls resolve ordinary numeric item keys through the negotiated registry
   and existing icon sources. Capped collection factories retain a final Back button's response
   index. Target-platform shop artwork, title, controls and server-response acceptance remain

@@ -179,14 +179,12 @@ fn legacy_replaces_json_for_local_and_remote_players_and_preserves_descendants()
             assert_eq!(pose[1].rotation, [0.0, 0.0, 0.0, 1.0]);
             assert_eq!(pose[5], pose[2]);
             let offset = pose::rotate_vector(pose[2].rotation, [1.0, -7.0, 1.0]);
-            for axis in 0..3 {
-                assert!(
-                    (pose[4].translation_scale[axis]
-                        - pose[2].translation_scale[axis]
-                        - offset[axis])
-                        .abs()
-                        < 2e-6
-                );
+            for ((item, arm), offset) in pose[4].translation_scale[..3]
+                .iter()
+                .zip(&pose[2].translation_scale[..3])
+                .zip(offset)
+            {
+                assert!((item - arm - offset).abs() < 2e-6);
             }
         }
     }

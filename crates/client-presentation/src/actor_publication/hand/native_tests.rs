@@ -432,7 +432,7 @@ fn native_hand_unbound_attachables_keep_actor_frame_during_owner_swing() {
 
 #[test]
 fn native_hand_unchanged_sampling_reuses_the_owned_pose_without_work() {
-    let (mut stream, mut equipment, artwork, input) = fixture(None);
+    let (mut stream, mut equipment, artwork, input) = fixture(Some("minecraft:shield"));
     stream.sync_local_swing(actor_animation::LocalSwingProgress {
         bedrock: [0.25, 0.5],
         java: [0.25, 0.5],
@@ -789,4 +789,33 @@ pub(super) fn player_feed() -> client_world::LocalPlayerFeed {
         sprinting: false,
         item_use: client_world::LocalItemUse::Unpredicted,
     }
+}
+
+#[test]
+fn legacy_bare_arm_reuses_its_rest_pose_without_sampling_or_allocating() {
+    let (mut stream, mut equipment, artwork, input) = fixture(None);
+    stream.advance_actor_interpolation_frame(0);
+    let mut cache = java::HandCache::default();
+    let source = hand_source_for_mode(
+        &stream,
+        &mut equipment,
+        &artwork,
+        &input,
+        &mut cache,
+        0.1,
+        false,
+    );
+    let rig = stream.authority().actor_rig(1).unwrap();
+    let allocations = test_alloc::thread_allocations();
+    let retained = cache.native_pose.rest_pose(&rig).unwrap();
+    assert_eq!(test_alloc::thread_allocations(), allocations);
+    assert!(Arc::ptr_eq(
+        &retained,
+        &source.presentation.submission.input.previous_bones
+    ));
+    assert!(Arc::ptr_eq(
+        &retained,
+        &source.presentation.submission.input.current_bones
+    ));
+    assert_eq!(cache.native_pose.sample_work, (0, 0));
 }

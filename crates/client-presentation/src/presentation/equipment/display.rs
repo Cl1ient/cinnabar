@@ -55,6 +55,7 @@ impl From<actor_animation::ItemAnimationState> for FirstPersonHand {
 /// Camera-space placement of the first-person held item, from vanilla's first-person item
 /// transforms: the swing offset (or the eat/drink raise), the equip dip, the swing turns and
 /// the 0.4 hand scale, then the item's default transforms.
+#[cfg(test)]
 pub(super) fn first_person_display(shape: FirstPersonShape, hand: FirstPersonHand) -> ItemDisplay {
     first_person_display_for_profile(shape, hand, render_api::DEFAULT_COMBAT_VISUALS)
 }

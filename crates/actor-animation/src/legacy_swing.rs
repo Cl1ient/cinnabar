@@ -36,16 +36,21 @@ pub(super) fn ordinary(actor: &dyn AnimatedActor, context: &ActorTickContext, sw
             .is_some_and(|item| matches!(item, "minecraft:filled_map" | "minecraft:map"))
 }
 
-/// Replaces only attack deltas, preserving the baseline walk, head and special skin transforms.
+/// Attack changes retained by named drivers until their destination skeleton is composed.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Delta {
+    rotation: [f32; 3],
+    translation: [f32; 3],
+}
+
+/// Records relative attack changes, preserving skin-specific pivots and authored rotations.
 pub(super) fn apply(
-    bones: &[RuntimeBone],
     names: &[Box<str>],
     local: &mut [pose::LocalDelta],
     progress: f32,
     head_pitch: f32,
     weight: f32,
 ) -> Result<(), EvalError> {
-    let base = pose::compose_pose(bones, local).ok_or(EvalError::Invalid)?;
     let swing = legacy_swing_pose(progress, head_pitch);
     for (index, name) in names.iter().enumerate() {
         let (rotation, offset) = match name.as_ref() {
@@ -66,27 +71,47 @@ pub(super) fn apply(
                     swing.left_shoulder.z,
                 ],
             ),
-            // A body-parented head keeps its original look instead of inheriting the attack twist.
+            // Keep a body-parented head on its original look rather than inheriting the twist.
             "head" => ([0.0; 3], [0.0; 3]),
             _ => continue,
         };
-        let mut target = *base.get(index).ok_or(EvalError::Invalid)?;
-        if name.as_ref() != "head" {
-            let [x, y, z, w] = target.rotation;
-            let angles = [
-                (2.0 * (w * x + y * z)).atan2(1.0 - 2.0 * (x * x + y * y)),
-                (2.0 * (w * y - z * x)).clamp(-1.0, 1.0).asin(),
-                (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z)),
-            ];
-            target.rotation = pose::quat_from_euler(std::array::from_fn(|axis| {
-                (angles[axis] + rotation[axis] * weight * if axis == 2 { 1.0 } else { -1.0 })
-                    .to_degrees()
-            }));
-        }
-        for axis in 0..3 {
-            target.translation_scale[axis] += offset[axis] * weight;
-        }
-        local[index].model_target = Some(target);
+        local.get_mut(index).ok_or(EvalError::Invalid)?.legacy_swing = Some(Delta {
+            rotation: rotation.map(|angle| angle * weight),
+            translation: offset.map(|offset| offset * weight),
+        });
     }
     Ok(())
+}
+
+/// Computes model-space targets from the destination's baseline after named driver mapping.
+pub(super) fn targets(
+    base: &[BoneTransform],
+    local: &[pose::LocalDelta],
+) -> Vec<Option<BoneTransform>> {
+    base.iter()
+        .enumerate()
+        .map(|(index, base)| {
+            let delta = local.get(index)?.legacy_swing?;
+            let mut target = *base;
+            if delta.rotation != [0.0; 3] {
+                let [x, y, z, w] = target.rotation;
+                let angles = [
+                    (2.0 * (w * x + y * z)).atan2(1.0 - 2.0 * (x * x + y * y)),
+                    (2.0 * (w * y - z * x)).clamp(-1.0, 1.0).asin(),
+                    (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z)),
+                ];
+                target.rotation = pose::quat_from_euler(std::array::from_fn(|axis| {
+                    (angles[axis] + delta.rotation[axis] * if axis == 2 { 1.0 } else { -1.0 })
+                        .to_degrees()
+                }));
+            }
+            for (translation, offset) in target.translation_scale[..3]
+                .iter_mut()
+                .zip(delta.translation)
+            {
+                *translation += offset;
+            }
+            Some(target)
+        })
+        .collect()
 }

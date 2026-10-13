@@ -15,7 +15,7 @@ pub(super) struct LocalDelta {
     pub(super) rotation: [f32; 3],
     pub(super) scale: [f32; 3],
     pub(super) rotation_relative_to_entity: bool,
-    pub(super) model_target: Option<BoneTransform>,
+    pub(super) legacy_swing: Option<super::legacy_swing::Delta>,
 }
 
 impl Default for LocalDelta {
@@ -25,7 +25,7 @@ impl Default for LocalDelta {
             rotation: [0.0; 3],
             scale: [1.0; 3],
             rotation_relative_to_entity: false,
-            model_target: None,
+            legacy_swing: None,
         }
     }
 }
@@ -197,7 +197,6 @@ pub(super) fn sample_clips(
     }
     if legacy_weight > 0.0 {
         super::legacy_swing::apply(
-            bones,
             bone_names,
             &mut local,
             variables
@@ -351,7 +350,13 @@ pub(super) fn compose_pose(
     bones: &[RuntimeBone],
     local: &[LocalDelta],
 ) -> Option<Vec<BoneTransform>> {
-    compose_pose_with_targets(bones, local, &[])
+    let baseline = compose_pose_with_targets(bones, local, &[])?;
+    if !local.iter().any(|delta| delta.legacy_swing.is_some()) {
+        return Some(baseline);
+    }
+    // Named skin drivers carry attack deltas, never absolute transforms from another geometry.
+    let targets = super::legacy_swing::targets(&baseline, local);
+    compose_pose_with_targets(bones, local, &targets)
 }
 
 /// Retarget named joints in model space while composing their clothing and other children.
@@ -384,12 +389,7 @@ fn compose_bone(
         return None;
     }
     visiting[index] = true;
-    if let Some(target) = targets
-        .get(index)
-        .copied()
-        .flatten()
-        .or_else(|| local.get(index).and_then(|delta| delta.model_target))
-    {
+    if let Some(target) = targets.get(index).copied().flatten() {
         if target
             .rotation
             .iter()

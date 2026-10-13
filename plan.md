@@ -19,7 +19,8 @@ changed choices still use carrier fallback. Specialized material sources retain 
 catalog keys and variant indices.
 Raster reuse follows the resolved image filename while preserving tint, grid and flipbook
 policies. Full arrays check indexed aliases for reuse before reading any new image payload.
-Block icon baking runs only when the icon subscriber recompiles.
+Block icon baking runs only when the icon subscriber recompiles. Mesh reuse also requires
+each material to retain its positional-versus-static variation mode.
 
 Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
 blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,

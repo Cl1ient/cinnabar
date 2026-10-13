@@ -8,6 +8,7 @@ use crate::{Aabb, Vec3};
 
 mod bamboo;
 mod camera_collision;
+mod collision;
 mod contracts;
 mod current;
 mod door;
@@ -49,6 +50,7 @@ pub struct CollisionRegistryIdentity {
     pub preg_sha256: [u8; 32],
 }
 
+/// Collision facts read together; zero revisions record absent movement-boundary columns.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldCollisionIdentity {
     pub registry: CollisionRegistryIdentity,
@@ -657,14 +659,15 @@ pub struct PaletteWorld<'a> {
     store: &'a ChunkStore,
     registry: &'a CollisionRegistry,
     dimension: i32,
+    unloaded_collision_barriers: bool,
 }
 
 /// One internal collision instance before projection onto the public
 /// box-only or provenance surfaces.
 struct CollisionInstance {
     shape: Aabb,
-    block: [i32; 3],
-    runtime_id: u32,
+    block: Option<[i32; 3]>,
+    runtime_id: Option<u32>,
 }
 
 impl<'a> PaletteWorld<'a> {
@@ -690,6 +693,7 @@ impl<'a> PaletteWorld<'a> {
             store,
             registry,
             dimension,
+            unloaded_collision_barriers: false,
         }
     }
 
@@ -702,6 +706,7 @@ impl<'a> PaletteWorld<'a> {
             .map(|key| {
                 self.store
                     .collision_revision(key)
+                    .or_else(|| self.unloaded_boundary_revision(key))
                     .ok_or(WorldQueryError::UnloadedChunk(key))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -721,6 +726,9 @@ impl<'a> PaletteWorld<'a> {
         let chunk = ChunkKey::new(self.dimension, x >> 4, z >> 4);
         let key = SubChunkKey::new(self.dimension, x >> 4, y >> 4, z >> 4);
         if !self.store.is_sub_chunk_loaded(key) {
+            if self.unloaded_boundary_revision(chunk).is_some() {
+                return Ok(vec![self.registry.air_runtime_id]);
+            }
             return Err(WorldQueryError::UnloadedChunk(chunk));
         }
         let Some(sub_chunk) = self.store.sub_chunk(key) else {
@@ -742,62 +750,6 @@ impl<'a> PaletteWorld<'a> {
             vec![self.registry.air_runtime_id]
         } else {
             ids
-        })
-    }
-    /// Shared emission core behind both public collision surfaces so their
-    /// outputs structurally cannot diverge: one translated registry shape
-    /// instance per (block, layer, shape) triple in block-scan order, each
-    /// kept only when it intersects `query`.
-    fn collision_instances(
-        &self,
-        query: Aabb,
-    ) -> Result<CollisionQuery<Vec<CollisionInstance>>, WorldQueryError> {
-        validate_collision_query(query)?;
-        if query.min == query.max {
-            return Ok(CollisionQuery {
-                value: Vec::new(),
-                identity: WorldCollisionIdentity::new(self.registry.identity(), [])?,
-            });
-        }
-        let [min, max] = self.registry.query_bounds(query)?;
-        let chunks = (min[0] >> 4..=max[0] >> 4)
-            .flat_map(|x| {
-                (min[2] >> 4..=max[2] >> 4).map(move |z| ChunkKey::new(self.dimension, x, z))
-            })
-            .collect::<Vec<_>>();
-        let identity = self.identity_for_chunks(chunks)?;
-
-        let mut instances = Vec::new();
-        for x in min[0]..=max[0] {
-            for z in min[2]..=max[2] {
-                for y in min[1]..=max[1] {
-                    let block = [x, y, z];
-                    for runtime_id in self.runtime_ids_at(block)? {
-                        let physics = self
-                            .registry
-                            .physics(runtime_id)
-                            .ok_or(WorldQueryError::UnknownRuntimeId { runtime_id, block })?;
-                        for shape in self
-                            .block_collision_shapes(block, physics, query)?
-                            .iter()
-                            .copied()
-                        {
-                            let shape = shape.translated(physics.shape_offset(block));
-                            if shape.intersects(query) {
-                                instances.push(CollisionInstance {
-                                    shape,
-                                    block,
-                                    runtime_id,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Ok(CollisionQuery {
-            value: instances,
-            identity,
         })
     }
 }
@@ -848,8 +800,8 @@ impl CollisionWorld for PaletteWorld<'_> {
                 .into_iter()
                 .map(|instance| ProvenancedCollider {
                     aabb: instance.shape,
-                    block: Some(instance.block),
-                    runtime_id: Some(u64::from(instance.runtime_id)),
+                    block: instance.block,
+                    runtime_id: instance.runtime_id.map(u64::from),
                 })
                 .collect(),
             identity: instances.identity,

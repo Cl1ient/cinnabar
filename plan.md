@@ -550,7 +550,12 @@ these changes do not close the movement, camera, or actor parity gates.
 - Actor crouch updates preserve held ability-flight descent during live input
   and correction replay; older walking-pose updates stop at the flight transition.
   Focused regressions reproduce the upward rewind caused by a server sneak clear.
-  Native-server candidate input and rendered acceptance remain incomplete.
+  Scoped native-server descent, release, landing and flight-toggle acceptance passed.
+- Provisional streaming-boundary handling keeps ability-flight ticks advancing
+  beside entirely absent columns, using solid collision barriers with retained
+  absence identities and replay snapshots. Missing sections in partially received
+  columns still wait for authoritative data. Streaming-boundary server, input and
+  rendered acceptance remain incomplete; this does not close creative-flight parity.
 - Validation: 267 simulator tests, 69 semantic-input tests, 345 movement tests
   and 16 focused client tests pass. The touched-crate compile check includes
   tests and the client app. The architecture check passes. Regression tests

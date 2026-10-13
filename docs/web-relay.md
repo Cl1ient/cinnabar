@@ -39,7 +39,9 @@ require Hello before account or gameplay bytes. Resume bearers are sent only ins
 that protected framing, never in URLs, headers, subprotocols or logs.
 
 A successful control Hello returns a rotated, short-lived bearer and a play
-generation. Keep the replacement from each keepalive and answer with pong.
+generation. Keep the replacement from each keepalive and answer with pong. The
+relay retains one previous bearer at its original expiry so a lost replacement
+does not prevent resumption. A resume retains the bearer presented by the browser.
 Resumption can retain an account across network changes; the new peer address must
 still satisfy admission. It starts a fresh play generation. Closing control cancels
 play. A refused resume requires an explicit fresh session; gameplay is never
@@ -53,5 +55,7 @@ apply after DNS resolution to every game connection, transfer hop, pack URL and
 pack redirect; environment proxies cannot bypass them.
 
 All current gameplay batches and pack chunks use reliable ordered play framing.
+WebSocket messages split larger bridge frames at the shared relay message limit;
+message boundaries do not change the bridge byte stream.
 Separate pack streams, gameplay datagrams, the browser adapter and entry page,
 and deployment/browser acceptance remain future integration work.

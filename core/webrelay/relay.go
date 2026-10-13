@@ -48,7 +48,7 @@ type Relay struct {
 	conns       sync.WaitGroup
 	mu          sync.Mutex
 	sessions    map[*webSession]struct{}
-	tokens      map[string]*webSession
+	tokens      map[string]resumeBearer
 	perIP       map[netip.Addr]int
 	connections map[netip.Addr]int
 	active      int
@@ -68,7 +68,7 @@ func New(cfg Config) *Relay {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Relay{cfg: cfg, logger: cfg.Logger, dialer: newUpstreamDialer(false), ctx: ctx, cancel: cancel,
-		sessions: make(map[*webSession]struct{}), tokens: make(map[string]*webSession), perIP: make(map[netip.Addr]int),
+		sessions: make(map[*webSession]struct{}), tokens: make(map[string]resumeBearer), perIP: make(map[netip.Addr]int),
 		connections: make(map[netip.Addr]int), limiters: make(map[netip.Addr]*clientLimiter)}
 }
 
@@ -122,8 +122,8 @@ func (relay *Relay) openControl(client netip.Addr, token string, now time.Time) 
 	if relay.ctx.Err() != nil {
 		return nil, nil, net.ErrClosed
 	}
-	session := relay.tokens[token]
-	if token != "" && (session == nil || !now.Before(session.tokenExpiry) || session.controlOpen) {
+	session := relay.resumeLocked(token, now)
+	if token != "" && (session == nil || session.controlOpen) {
 		return nil, nil, errResume
 	}
 	if session == nil {
@@ -155,7 +155,7 @@ func (relay *Relay) openControl(client netip.Addr, token string, now time.Time) 
 	session.controlOpen = true
 	session.controlCtx, session.controlCancel = context.WithCancel(relay.ctx)
 	session.generation++
-	relay.rotateLocked(session, now)
+	relay.rotateLocked(session, token, now)
 	var once sync.Once
 	return session, func(now time.Time) {
 		once.Do(func() {
@@ -168,20 +168,12 @@ func (relay *Relay) openControl(client netip.Addr, token string, now time.Time) 
 	}, nil
 }
 
-// rotateLocked invalidates the previous bearer before issuing a short-lived replacement.
-func (relay *Relay) rotateLocked(session *webSession, now time.Time) {
-	delete(relay.tokens, session.token)
-	session.token = newSessionID()
-	session.tokenExpiry = now.Add(resumeTTL)
-	relay.tokens[session.token] = session
-}
-
 // welcome returns the current control capability, refreshing it on keepalive.
 func (relay *Relay) welcome(session *webSession, refresh bool, now time.Time) controlEvent {
 	relay.mu.Lock()
 	defer relay.mu.Unlock()
 	if refresh {
-		relay.rotateLocked(session, now)
+		relay.rotateLocked(session, session.token, now)
 	}
 	return controlEvent{Type: bridgecontract.RelayEventWelcome, Version: bridgecontract.RelayVersion,
 		Resume: session.token, Generation: session.generation, ExpiresSeconds: int(resumeTTL / time.Second)}
@@ -193,8 +185,8 @@ func (relay *Relay) playSession(bound *webSession, hello hello, now time.Time) (
 	defer relay.mu.Unlock()
 	session := bound
 	if session == nil {
-		session = relay.tokens[hello.Resume]
-		if session == nil || !now.Before(session.tokenExpiry) {
+		session = relay.resumeLocked(hello.Resume, now)
+		if session == nil {
 			return nil, nil, errResume
 		}
 	}
@@ -212,6 +204,7 @@ func (relay *Relay) expire(now time.Time) {
 		if session.expired(now, idleTTL) {
 			delete(relay.sessions, session)
 			delete(relay.tokens, session.token)
+			delete(relay.tokens, session.previousToken)
 			relay.perIP[session.client]--
 			if relay.perIP[session.client] == 0 {
 				delete(relay.perIP, session.client)
@@ -255,7 +248,7 @@ func (relay *Relay) Close() {
 	relay.mu.Lock()
 	sessions := relay.sessions
 	relay.sessions = make(map[*webSession]struct{})
-	relay.tokens = make(map[string]*webSession)
+	relay.tokens = make(map[string]resumeBearer)
 	relay.mu.Unlock()
 	for session := range sessions {
 		session.close()

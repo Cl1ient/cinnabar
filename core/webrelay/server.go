@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -108,12 +109,11 @@ func (relay *Relay) serveSocket(w http.ResponseWriter, r *http.Request, channel 
 	defer cancel()
 	stop := context.AfterFunc(ctx, func() { _ = socket.CloseNow() })
 	defer stop()
-	conn := websocket.NetConn(ctx, socket, websocket.MessageBinary)
-	limit := int64(playMessageLimit)
+	limit := playMessageLimit
 	if channel == bridgecontract.RelayChannelControl {
 		limit = bridgecontract.RelayControlBytes + 4
 	}
-	socket.SetReadLimit(limit) // NetConn removes the library's message limit.
+	conn := newSocketConn(ctx, socket, limit)
 	request, err := readHello(conn, channel)
 	if err != nil {
 		return
@@ -129,6 +129,41 @@ func (relay *Relay) serveSocket(w http.ResponseWriter, r *http.Request, channel 
 	}
 	defer func() { detach(time.Now()) }()
 	relay.runControl(ctx, conn, client, session)
+}
+
+// newSocketConn preserves the reliable byte stream while bounding incoming and outgoing messages.
+// The message limit must be positive.
+func newSocketConn(ctx context.Context, socket *websocket.Conn, limit int) net.Conn {
+	conn := websocket.NetConn(ctx, socket, websocket.MessageBinary)
+	socket.SetReadLimit(int64(limit)) // NetConn removes the library's message limit.
+	return &socketConn{Conn: conn, messageLimit: limit}
+}
+
+// socketConn keeps each complete Write ordered across its bounded WebSocket messages.
+type socketConn struct {
+	net.Conn
+	messageLimit int
+	writeMu      sync.Mutex
+}
+
+// Write splits the stream into bounded messages and reports bytes accepted before any failure.
+func (conn *socketConn) Write(data []byte) (int, error) {
+	conn.writeMu.Lock()
+	defer conn.writeMu.Unlock()
+	written := 0
+	for len(data) > 0 {
+		chunk := data[:min(len(data), conn.messageLimit)]
+		n, err := conn.Conn.Write(chunk)
+		written += n
+		if err != nil {
+			return written, err
+		}
+		if n != len(chunk) {
+			return written, io.ErrShortWrite
+		}
+		data = data[n:]
+	}
+	return written, nil
 }
 
 // serveTransport binds one control and at most one play stream to an authenticated QUIC session.

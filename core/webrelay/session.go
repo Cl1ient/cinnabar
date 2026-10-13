@@ -37,7 +37,7 @@ var errSessionBusy = errors.New("webrelay: session is already playing")
 // handler its play connections join through. Relay.mu owns capability fields; mu owns account state.
 type webSession struct {
 	token         string
-	tokenExpiry   time.Time
+	previousToken string
 	generation    uint64
 	controlOpen   bool
 	controlCtx    context.Context

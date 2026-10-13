@@ -1,5 +1,7 @@
 //! Locomotion-mode wire edges: each start/stop flag rides exactly the tick the simulator changed mode.
 
+include!("flight_replay_tests.rs");
+
 use std::time::Duration;
 
 use protocol::PlayerInputFlags;

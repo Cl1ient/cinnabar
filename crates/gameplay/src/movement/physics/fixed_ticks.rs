@@ -22,6 +22,13 @@ pub(super) fn frame(
     }
 }
 
+/// Whole fixed ticks contained in accumulated seconds.
+pub(super) fn whole_ticks(accumulated_seconds: f64) -> u64 {
+    ((accumulated_seconds + f64::EPSILON) / LOCAL_PHYSICS_TICK_SECONDS)
+        .floor()
+        .clamp(0.0, u64::MAX as f64) as u64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,11 +75,4 @@ mod tests {
         assert_eq!(frame.dropped_ticks, 1);
         assert!(accumulated < LOCAL_PHYSICS_TICK_SECONDS);
     }
-}
-
-/// Whole fixed ticks contained in accumulated seconds.
-pub(super) fn whole_ticks(accumulated_seconds: f64) -> u64 {
-    ((accumulated_seconds + f64::EPSILON) / LOCAL_PHYSICS_TICK_SECONDS)
-        .floor()
-        .clamp(0.0, u64::MAX as f64) as u64
 }

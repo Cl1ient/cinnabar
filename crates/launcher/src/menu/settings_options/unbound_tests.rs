@@ -16,7 +16,13 @@ fn explicit_unbound_survives_reload_and_preserves_other_device_and_actions() {
         .bindings()
         .iter()
         .copied()
-        .filter(|binding| binding.action != Action::Jump || is_gamepad(binding.chord.control))
+        .filter(|binding| {
+            binding.action != Action::Jump
+                || !matches!(
+                    binding.chord.control,
+                    PhysicalControl::KeyboardUsage(_) | PhysicalControl::MouseButton(_)
+                )
+        })
         .collect::<Vec<_>>();
     assert_eq!(controls.bindings(), expected);
     let mut restored = loaded;
@@ -120,4 +126,41 @@ fn unbinding_does_not_enable_an_unrelated_suppressed_default() {
     assert_eq!(loaded.named_key_control("key.drop"), None);
     assert_eq!(loaded.named_key_control(OPEN_NOTIFICATION_KEY), None);
     assert_eq!(loaded.controls().unwrap(), original);
+}
+
+#[test]
+fn clearing_keyboard_actions_keeps_their_touch_controls_working_after_reload() {
+    let defaults = ControlSettings::default();
+    for (row, (action, _)) in KEY_BINDINGS.iter().enumerate() {
+        let Some(hit_id) = defaults.bindings().iter().find_map(|binding| {
+            if binding.action == *action
+                && let PhysicalControl::TouchControl(hit_id) = binding.chord.control
+            {
+                Some(hit_id)
+            } else {
+                None
+            }
+        }) else {
+            continue;
+        };
+        let mut settings = SettingsOptions::default();
+        assert!(settings.unbind_key(row));
+        let loaded = SettingsOptions::decode(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        let mut router = semantic_input::SemanticInputRouter::default();
+        router.replace_bindings(loaded.controls().unwrap()).unwrap();
+        router
+            .route(semantic_input::DeviceFrame {
+                touches: vec![semantic_input::TouchContact {
+                    contact_id: 1,
+                    activity_sequence: 1,
+                    position: [0.0; 2],
+                    delta: [0.0; 2],
+                    hit_id: Some(hit_id),
+                }],
+                ..Default::default()
+            })
+            .unwrap();
+        let phase = router.finalize().unwrap().phases[*action as usize];
+        assert!(phase.pressed || phase.held, "{action:?}");
+    }
 }

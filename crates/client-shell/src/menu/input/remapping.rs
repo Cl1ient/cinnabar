@@ -244,7 +244,11 @@ mod tests {
                 .iter()
                 .copied()
                 .filter(|binding| {
-                    binding.action != Action::Sneak || is_gamepad(binding.chord.control)
+                    binding.action != Action::Sneak
+                        || !matches!(
+                            binding.chord.control,
+                            PhysicalControl::KeyboardUsage(_) | PhysicalControl::MouseButton(_)
+                        )
                 })
                 .collect::<Vec<_>>()
         );

@@ -313,7 +313,10 @@ impl SettingsOptions {
                 if binding.action != action
                     || binding.context != InputContext::Gameplay
                     || is_gamepad(binding.chord.control) != (index >= GAMEPAD_OFFSET)
-                    || matches!(binding.chord.control, PhysicalControl::MouseAxis(_))
+                    || matches!(
+                        binding.chord.control,
+                        PhysicalControl::MouseAxis(_) | PhysicalControl::TouchControl(_)
+                    )
                 {
                     return true;
                 }

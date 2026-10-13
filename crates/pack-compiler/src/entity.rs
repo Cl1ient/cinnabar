@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 
 mod animation;
 mod attachable;
-mod collect;
+pub(crate) mod collect;
 mod geometry;
 mod geometry_layers;
 mod seats;

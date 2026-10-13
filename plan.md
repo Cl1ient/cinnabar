@@ -7932,6 +7932,13 @@ sends them in login and skin updates. Custom models keep their authored shape;
 rename and delete remain available. Preview preparation runs on a worker, while
 local world presentation uses the shared actor preparation cache in both perspectives.
 
+Starter skin compilation selects standalone model definitions above legacy definitions
+at the geometry identifier boundary. This keeps classic skin previews from combining
+an obsolete inherited body with the current model. Authored coincident cubes and
+generic entity inheritance retain their existing behavior. Reports involving other
+custom entity models still need a reproducible model and pack stack; that parity
+acceptance remains incomplete.
+
 Imported raster dimensions follow the native 64×32, 64×64 and 128×128 contract.
 Archive, geometry and library ceilings are Cinnabar resource limits. Pack minimum
 engine versions remain separate from geometry schema versions. Full native skin-pack

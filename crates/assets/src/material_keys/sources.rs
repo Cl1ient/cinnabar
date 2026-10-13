@@ -51,3 +51,45 @@ pub fn normalize_terrain_weights(weights: &mut [f32]) -> bool {
     }
     true
 }
+
+impl super::MaterialKeys {
+    /// Retains reload source facts, with block bindings ordered by sequential visual ID.
+    #[must_use]
+    pub fn with_sources(
+        mut self,
+        terrain: impl IntoIterator<Item = (Box<str>, serde_json::Value)>,
+        materials: impl IntoIterator<Item = (u32, MaterialTextureSource)>,
+        blocks: impl IntoIterator<Item = BlockTextureSource>,
+    ) -> Self {
+        self.terrain = terrain.into_iter().collect();
+        self.material_sources = materials.into_iter().collect();
+        self.block_sources = blocks.into_iter().collect();
+        self.block_sources
+            .sort_unstable_by_key(|source| source.visual);
+        self
+    }
+
+    /// Complete base terrain entries, including state arrays and weighted choices.
+    pub fn terrain_entries(&self) -> impl Iterator<Item = (&str, &serde_json::Value)> {
+        self.terrain
+            .iter()
+            .map(|(key, entry)| (key.as_ref(), entry))
+    }
+
+    /// Source path and state variant of an individual compiled material.
+    pub fn material_source(&self, material: u32) -> Option<&MaterialTextureSource> {
+        self.material_sources.get(&material)
+    }
+
+    /// All material source routes, including independent weighted leaf copies.
+    pub fn material_sources(&self) -> impl Iterator<Item = (u32, &MaterialTextureSource)> {
+        self.material_sources
+            .iter()
+            .map(|(&id, source)| (id, source))
+    }
+
+    /// Per-block binding identities, in the carrier's sequential visual order.
+    pub fn block_sources(&self) -> &[BlockTextureSource] {
+        &self.block_sources
+    }
+}

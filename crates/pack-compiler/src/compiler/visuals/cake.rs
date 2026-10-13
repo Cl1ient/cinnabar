@@ -127,14 +127,12 @@ pub(in crate::compiler) fn cake_material_descriptors(
             ("cake_west", "textures/blocks/cake_inner"),
         ]
         .map(|(key, path)| {
-            let variants = pack
-                .terrain
-                .get_exact_pair_no_tint(key)
-                .expect("validated pair");
-            let state_variant = variants
+            let state_variant = pairs
                 .iter()
-                .position(|&variant| variant == path)
-                .expect("validated cake source") as u32;
+                .find(|(source_key, _)| *source_key == key)
+                .and_then(|(_, paths)| paths.iter().position(|&source| source == path))
+                .expect("validated cake pair contains its emitted path")
+                as u32;
             (
                 Descriptor {
                     state_variant,

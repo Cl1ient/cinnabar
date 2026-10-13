@@ -88,3 +88,32 @@ fn older_unordered_source_arrays_are_normalized_when_decoded() {
     let decoded = MaterialKeys::from_json(&serde_json::to_vec(&wire).unwrap(), 1).unwrap();
     assert_eq!(decoded.block_sources(), keys.block_sources());
 }
+
+#[test]
+fn animation_sources_and_destinations_survive_sidecar_round_trip() {
+    let source: crate::texture::flipbook::FlipbookSource =
+        serde_json::from_value(serde_json::json!({
+            "flipbook_texture":"textures/strip", "atlas_tile":"tile", "frames":[2,0,1],
+            "atlas_index":3, "atlas_tile_variant":2, "ticks_per_frame":7,
+            "replicate":2, "blend_frames":false
+        }))
+        .unwrap();
+    let keys = MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbooks(std::slice::from_ref(&source))
+        .with_flipbook_selectors([(1, (3, 2)), (2, (3, 1))]);
+    let bytes = keys.to_json(3);
+    assert_eq!(MaterialKeys::from_json(&bytes, 3), Some(keys));
+    for (field, value) in [
+        ("ticks_per_frame", serde_json::json!(0)),
+        ("replicate", serde_json::json!(0)),
+        ("frames", serde_json::json!([0, 1])),
+    ] {
+        let mut wire: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        wire["flipbooks"][0][field] = value;
+        if field == "frames" {
+            wire["flipbooks"][0]["ticks_per_frame"] = serde_json::json!(u32::MAX);
+        }
+        assert!(MaterialKeys::from_json(&serde_json::to_vec(&wire).unwrap(), 3).is_none());
+    }
+}

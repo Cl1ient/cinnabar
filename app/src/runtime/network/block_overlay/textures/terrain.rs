@@ -2,13 +2,12 @@
 
 use super::{DecodedTexture, resample_square};
 
-/// Admits the first square of a vertical strip and the minimum atlas pixel dimensions.
+/// Cuts strips that cannot remain terrain rectangles, then admits minimum atlas dimensions.
 pub(in super::super) fn admit_static_rectangle(texture: &mut DecodedTexture) {
-    if texture.height > texture.width {
-        texture.height = texture.width;
-        let mut pixels = std::mem::take(&mut texture.rgba8).into_vec();
-        pixels.truncate((texture.width * texture.height * 4) as usize);
-        texture.rgba8 = pixels.into_boxed_slice();
+    if texture.height > texture.width
+        || texture.width > assets::texture::policy::device_policy().max_side()
+    {
+        texture.retain_first_strip_frame();
     }
     let width = texture.width.max(assets::TILE_SIZE);
     let height = texture.height.max(assets::TILE_SIZE);

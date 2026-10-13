@@ -3,6 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use render_model::{DroppedItemModel, DroppedItemSpawnPose, MAX_ITEM_LAYERS};
 
+mod publication;
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(super) enum ModelKey {
     PottedBlock {
@@ -65,7 +67,10 @@ pub(crate) struct ModelCache {
 
 struct Resident {
     key: ModelKey,
+    /// Last frame with a current scene consumer.
     requested: u64,
+    /// Last frame that wanted this model for speculative animation residency.
+    warmed: u64,
     layers: usize,
 }
 
@@ -74,16 +79,6 @@ struct RejectedModel {
     layers: Option<usize>,
     pixel_bytes: Option<usize>,
     requested: u64,
-}
-
-/// Returns the texture layers required by a model, excluding the shared white layer.
-fn layer_cost(model: &DroppedItemModel) -> usize {
-    match model {
-        DroppedItemModel::Vacant => 0,
-        DroppedItemModel::Cube(cube) => cube.faces.len(),
-        DroppedItemModel::Block(block) => block.materials.len(),
-        DroppedItemModel::Sprite(_) | DroppedItemModel::NativeSprite(_) => 1,
-    }
 }
 
 /// Counts retained source pixels independently of physical GPU layer expansion.
@@ -201,19 +196,57 @@ impl ModelCache {
         cost: impl FnOnce() -> Option<usize>,
         build: impl FnOnce() -> Option<DroppedItemModel>,
     ) -> Option<u32> {
-        self.request(&key);
+        self.admit(key, cost, build, true)
+    }
+
+    /// Caches a speculative icon in unused source capacity; publication applies GPU limits.
+    pub(super) fn warm_icon(
+        &mut self,
+        key: ModelKey,
+        build: impl FnOnce() -> Option<DroppedItemModel>,
+    ) -> Option<u32> {
+        self.admit(key, || Some(1), build, false)
+    }
+
+    /// Admits a model within both budgets, optionally reclaiming absent consumers.
+    fn admit(
+        &mut self,
+        key: ModelKey,
+        cost: impl FnOnce() -> Option<usize>,
+        build: impl FnOnce() -> Option<DroppedItemModel>,
+        reclaim: bool,
+    ) -> Option<u32> {
+        if reclaim {
+            self.request(&key);
+        }
         if let Some(&slot) = self.index.get(&key) {
+            if !reclaim {
+                self.residents[slot]
+                    .as_mut()
+                    .expect("indexed resident")
+                    .warmed = self.frame;
+            }
             return Some(slot as u32);
         }
+        let available = if reclaim {
+            self.available
+        } else {
+            MAX_ITEM_LAYERS - 1 - self.layers
+        };
+        let available_pixels = if reclaim {
+            self.available_pixels
+        } else {
+            assets::texture::policy::MAX_SUBSCRIBER_BYTES - self.pixel_bytes
+        };
         // Repeated rejections reuse the capacity summary without scans or model construction.
-        if self.available == 0 {
+        if available == 0 {
             return None;
         }
         let estimate = match self.rejected.get(&key) {
             Some(entry) => {
                 if entry
                     .pixel_bytes
-                    .is_some_and(|bytes| bytes > self.available_pixels)
+                    .is_some_and(|bytes| bytes > available_pixels)
                 {
                     return None;
                 }
@@ -233,7 +266,7 @@ impl ModelCache {
         if cost == 0 {
             return None;
         }
-        if cost > self.available {
+        if cost > available {
             let pixel_bytes = self.rejected.get(&key).and_then(|entry| entry.pixel_bytes);
             self.remember_rejection(key, Some(cost), pixel_bytes);
             return None;
@@ -245,12 +278,12 @@ impl ModelCache {
             return None;
         };
         assert_eq!(
-            layer_cost(&model),
+            model.texture_layers(),
             cost,
             "model layer estimate must match its geometry"
         );
         let pixel_bytes = pixel_cost(&model);
-        if pixel_bytes > self.available_pixels {
+        if pixel_bytes > available_pixels {
             self.remember_rejection(key, Some(cost), Some(pixel_bytes));
             return None;
         }
@@ -289,13 +322,18 @@ impl ModelCache {
         self.index.insert(key.clone(), slot);
         self.residents[slot] = Some(Resident {
             key,
-            requested: self.frame,
+            requested: if reclaim { self.frame } else { 0 },
+            warmed: if reclaim { 0 } else { self.frame },
             layers: cost,
         });
         self.layers += cost;
         self.pixel_bytes += pixel_bytes;
-        self.available -= cost;
-        self.available_pixels -= pixel_bytes;
+        if !reclaim && self.demand_ready {
+            self.reclaimable.push(slot);
+        } else {
+            self.available -= cost;
+            self.available_pixels -= pixel_bytes;
+        }
         self.dirty = true;
         Some(slot as u32)
     }
@@ -307,10 +345,15 @@ impl ModelCache {
             .is_some_and(|entry| entry.requested == self.frame)
     }
 
-    /// Publishes current demand at stable slots while keeping inactive CPU models cached.
-    pub(super) fn finish_frame(&mut self) {
+    /// Publishes current demand and fitting speculative frames at stable slots.
+    pub(super) fn finish_frame(
+        &mut self,
+        policy: assets::texture::policy::TexturePolicy,
+        max_array_layers: usize,
+    ) {
+        let published = self.publication_mask(policy, max_array_layers);
         let demand_changed = self.models.iter().enumerate().any(|(slot, _)| {
-            self.demanded(slot)
+            published[slot]
                 != self
                     .shared
                     .get(slot)
@@ -322,7 +365,7 @@ impl ModelCache {
                 .iter()
                 .enumerate()
                 .map(|(slot, model)| {
-                    if self.demanded(slot) {
+                    if published[slot] {
                         model.clone()
                     } else {
                         DroppedItemModel::Vacant

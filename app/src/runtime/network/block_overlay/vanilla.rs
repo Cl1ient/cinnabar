@@ -21,7 +21,7 @@ impl Builder<'_> {
                 continue;
             }
             let source = keys.material_source(id);
-            let variant = source.map_or(0, |source| source.variant);
+            let variant = source.map_or(keys.flipbook_selector(id).0, |source| source.variant);
             let base = self
                 .base_assets
                 .and_then(|base| base.materials().get(id as usize))
@@ -50,7 +50,7 @@ impl Builder<'_> {
                     || TextureRoute::Catalog {
                         key: key.to_owned(),
                         variant,
-                        choice: 0,
+                        choice: keys.flipbook_selector(id).1,
                     },
                     |source| TextureRoute::Path {
                         variant: source.variant,

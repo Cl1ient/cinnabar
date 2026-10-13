@@ -39,6 +39,7 @@ mod destroy_facts;
 mod leaf_mips;
 mod lily_pad_textures;
 mod material_facts;
+mod material_keys;
 mod materials;
 use materials::compile_materials;
 mod pack_bindings;
@@ -486,12 +487,8 @@ fn compile_pack_inner(
         compile_materials(&descriptor_keys, &animation_plan, &alpha_paths)?;
     let (materials, material_by_descriptor) =
         variations::install(materials, material_by_descriptor, variation_groups)?;
-    let material_keys = MaterialKeys::from_entries(
-        material_by_descriptor
-            .iter()
-            .map(|(descriptor, &material)| (material, descriptor.texture_key.as_ref())),
-    )
-    .with_aliases(pack.terrain.first_paths());
+    let material_keys =
+        material_keys::build(&pack, &material_by_descriptor, &materials, &animations);
     let vanilla_fallback_material =
         visuals::fallback::neutral_material(fallback, records, &pack, &material_by_descriptor)?;
     let (visuals, hashed, model_templates, mut model_quads) = compile_visuals(
@@ -541,8 +538,12 @@ fn compile_pack_inner(
     } = leaf_mips::install(&mut materials, texture_pages, animations, animation_frames)?;
     // World leaf selectors retain their original terrain keys even though their
     // native mip chains are separate from carried/shared texture pixels.
-    let material_keys = pack_bindings::with_copies(material_keys, &lily_pad_keys, &seasonal_copies)
-        .with_fixed_tints(lily_pad_tints);
+    let material_keys = material_keys::extend(
+        material_keys,
+        &lily_pad_keys,
+        lily_pad_tints,
+        &seasonal_copies,
+    );
     let material_keys = pack_bindings::retain(
         material_keys,
         (&pack, root),

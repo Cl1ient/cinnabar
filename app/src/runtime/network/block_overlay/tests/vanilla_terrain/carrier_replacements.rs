@@ -644,7 +644,7 @@ fn raster_only_world_and_carried_routes_reuse_layers_at_the_device_limit() {
 fn baked_carrier_timelines_are_excluded_instead_of_reapplying_physical_indices() {
     let (base, keys) = animated_donor();
     let terrain = json!({"texture_data":{"anim":{"textures":"textures/anim"}}});
-    let flipbooks = json!([{"atlas_tile":"anim","frames":[1,0,1],"ticks_per_frame":2}]);
+    let flipbooks = json!([{"atlas_tile":"anim","flipbook_texture":"textures/anim","frames":[1,0,1],"ticks_per_frame":2}]);
     let absent = timeline_pack(terrain.clone(), flipbooks.clone(), &[]);
     assert!(
         super::super::super::compile_block_overlay(
@@ -764,7 +764,7 @@ fn failed_weighted_selectors_release_pixels_frames_and_cached_slots() {
                 "good":{"textures":if reuse_first {"textures/first"} else {"textures/good"}}
             }});
             let flipbooks = if animated {
-                json!([{"atlas_tile":"bad","frames":[0,1],"ticks_per_frame":2}])
+                json!([{"atlas_tile":"bad","atlas_tile_variant":0,"flipbook_texture":"textures/first","frames":[0,1],"ticks_per_frame":2}])
             } else {
                 json!([])
             };

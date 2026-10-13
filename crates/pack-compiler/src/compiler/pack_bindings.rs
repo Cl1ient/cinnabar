@@ -143,27 +143,3 @@ fn cube_binding_eligible(
 
 #[cfg(test)]
 mod tests;
-
-/// Extends the material index with copies derived from existing compiler source routes.
-pub(super) fn with_copies(
-    keys: MaterialKeys,
-    extra: &[(u32, Box<str>)],
-    copies: &[(u32, u32)],
-) -> MaterialKeys {
-    let original = keys
-        .keys()
-        .flat_map(|key| keys.materials(key).iter().map(move |&id| (id, key)))
-        .collect::<Vec<_>>();
-    MaterialKeys::from_entries(
-        original
-            .iter()
-            .copied()
-            .chain(extra.iter().map(|(id, key)| (*id, key.as_ref())))
-            .chain(copies.iter().flat_map(|&(copy, original_id)| {
-                original
-                    .iter()
-                    .filter_map(move |&(id, key)| (id == original_id).then_some((copy, key)))
-            })),
-    )
-    .with_aliases(keys.aliases())
-}

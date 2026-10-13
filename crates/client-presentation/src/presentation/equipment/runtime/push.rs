@@ -143,7 +143,7 @@ impl EquipmentRuntime {
                 (None, HeldKind::Other) => return None,
                 (None, HeldKind::Block(_)) if !icon_fallback => return None,
                 (None, _) => {
-                    let index = self.icons.lookup_index(&item.identifier, item.metadata)?;
+                    let index = self.held_icon_index(item)?;
                     (index, MeshKey::Sprite(index))
                 }
             };

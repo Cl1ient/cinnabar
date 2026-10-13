@@ -1,6 +1,9 @@
 use std::{collections::BTreeSet, path::Path};
 
-use assets::AssetError;
+use assets::{
+    AssetError,
+    texture::flipbook::{DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES},
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -11,24 +14,6 @@ use super::{
 
 /// Maximum number of flipbook selectors accepted from one resource pack.
 pub const MAX_FLIPBOOKS: usize = MAX_TEXTURE_KEYS;
-/// Maximum number of explicit frame indices retained for one flipbook.
-pub const MAX_FLIPBOOK_FRAMES: usize = 4_096;
-/// Vanilla interpolates frames unless an entry opts out; its pack only writes `false`.
-pub const DEFAULT_BLEND_FRAMES: bool = true;
-
-/// Flipbook metadata needed to keep animated strips out of static layers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlipbookSource {
-    pub texture_path: Box<str>,
-    pub atlas_tile: Box<str>,
-    pub ticks_per_frame: u32,
-    pub frames: Box<[u32]>,
-    pub atlas_index: u32,
-    pub atlas_tile_variant: u32,
-    pub replicate: u32,
-    pub blend_frames: bool,
-}
-
 #[derive(Deserialize)]
 struct RawFlipbook {
     flipbook_texture: String,
@@ -89,6 +74,7 @@ pub(super) fn read_flipbooks(
 
         let ticks_per_frame = flipbook_u32(entry.ticks_per_frame, 1, index, "ticks_per_frame")?;
         let atlas_index = flipbook_u32(entry.atlas_index, 0, index, "atlas_index")?;
+        let all_variants = matches!(entry.atlas_tile_variant, PresentValue::Missing);
         let atlas_tile_variant =
             flipbook_u32(entry.atlas_tile_variant, 0, index, "atlas_tile_variant")?;
         let replicate = flipbook_u32(entry.replicate, 1, index, "replicate")?;
@@ -129,6 +115,7 @@ pub(super) fn read_flipbooks(
             frames,
             atlas_index,
             atlas_tile_variant,
+            all_variants,
             replicate,
             blend_frames,
         });

@@ -155,6 +155,19 @@ fn compile(
         }
         visual_sprites.push(sprite);
     }
+    for strip in &assets::icon::dial::DIAL_STRIPS {
+        for (frame, sprite) in sprites::strip_frames(root, &compiled, strip.strip_path)?
+            .into_iter()
+            .enumerate()
+        {
+            entries.push(IconEntry {
+                identifier: strip.frames_identifier.into(),
+                metadata: frame as u32,
+                sprite: sprites.len() as u32,
+            });
+            sprites.push(sprite);
+        }
+    }
     let bake::BakedBlocks {
         flat_sprites,
         model_sprites,

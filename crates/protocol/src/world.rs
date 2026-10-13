@@ -69,7 +69,7 @@ pub use self::events::{
     PlayerMovementCorrectionEvent, PublisherUpdateEvent, RespawnEvent, STANDING_PLAYER_EYE_HEIGHT,
     SetTimeEvent, SubChunkBatchEvent, SubChunkEntryEvent, SubChunkReplyAdmissionEvent,
     SubChunkResult, SubChunkUnavailable, SyncedBlockUpdateEvent, WeatherChannel,
-    WeatherUpdateEvent, WorldEvent, air_network_id, vanilla_dimension_range,
+    WeatherUpdateEvent, WorldEvent, WorldSpawnEvent, air_network_id, vanilla_dimension_range,
 };
 pub use self::game_mode::PlayerGameMode;
 use self::game_rules::{
@@ -556,6 +556,19 @@ world_packets! {
         WorldEvent::PlayerMovementCorrection(event)
     },
     SetTime(packet) => WorldEvent::SetTime(SetTimeEvent { time: packet.time.0 }),
+    SetSpawnPosition(packet) => {
+        // Player respawn points are not carried; compasses only read the world spawn.
+        if packet.spawn_position_type != bedrock_protocol_1_26_51::enums::SpawnPositionType::Worldspawn {
+            return Ok(None);
+        }
+        WorldEvent::WorldSpawn(WorldSpawnEvent {
+            position: [
+                packet.spawn_block_pos.x.0,
+                packet.spawn_block_pos.y.0,
+                packet.spawn_block_pos.z.0,
+            ],
+        })
+    },
     SyncWorldClocks(packet) => {
         let updates = clocks::normalize_world_clocks(packet.data);
         if updates.is_empty() {

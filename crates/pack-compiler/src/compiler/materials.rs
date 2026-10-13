@@ -63,6 +63,11 @@ pub(super) fn compile_materials(
         } else {
             continue;
         };
+        let animated = animation.map(|id| {
+            let source = &plan.animations[id as usize];
+            (source.atlas_index, source.atlas_tile_variant)
+        });
+        let destination = super::material_keys::destination(descriptor, animated);
         let animation = animation.unwrap_or(NO_ANIMATION);
         let value = (
             texture,
@@ -71,6 +76,7 @@ pub(super) fn compile_materials(
             descriptor.texture_key.as_ref(),
             descriptor.state_variant,
             descriptor.path.as_ref(),
+            destination,
         );
         let material = if let Some(&material) = material_by_value.get(&value) {
             material

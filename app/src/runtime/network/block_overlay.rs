@@ -8,9 +8,10 @@ mod condition;
 mod geometry_inputs;
 use pack_compiler::block_geometry as geometry;
 mod legacy;
+mod storage;
 mod texture_admission;
 mod textures;
-use texture_admission::{AdmittedTexture, TextureSlots};
+use texture_admission::TextureSlots;
 mod vanilla;
 
 use std::{
@@ -19,7 +20,7 @@ use std::{
 };
 
 use assets::{
-    Animation, BlockFlags, BlockOverlay, BlockVisual, ContributorRole, LightProperties,
+    BlockFlags, BlockOverlay, BlockVisual, ContributorRole, LightProperties,
     MATERIAL_FLAG_ALPHA_BLEND, MATERIAL_FLAG_ALPHA_CUTOUT, MATERIAL_FLAG_BIRCH_FOLIAGE,
     MATERIAL_FLAG_DISABLE_AO, MATERIAL_FLAG_DISABLE_FACE_DIMMING, MATERIAL_FLAG_DRY_FOLIAGE,
     MATERIAL_FLAG_EVERGREEN_FOLIAGE, MATERIAL_FLAG_FOLIAGE_TINT, MATERIAL_FLAG_GRASS_TINT,
@@ -34,9 +35,9 @@ use self::{
     condition::StateVisual,
     geometry::{FACE_NAMES, FaceQuad, Geometry},
     geometry_inputs::geometry_catalog,
-    textures::{TextureCatalog, admit_static_rectangle, flipbook_frames, source_mip_chain},
+    textures::{TextureCatalog, source_mip_chain},
 };
-use assets::texture::policy::{MAX_SUBSCRIBER_BYTES, TexturePolicy, device_policy};
+use assets::texture::policy::{TexturePolicy, device_policy};
 use pack_runtime::pack_textures::DecodedTexture;
 
 const FULL_BLOCK: &str = "minecraft:geometry.full_block";
@@ -541,125 +542,14 @@ impl Builder<'_> {
         self.slots.insert(identity, loaded, keys.is_some())
     }
 
-    /// Admits one raster route using the existing frame and storage budgets.
-    fn load_texture(
-        &mut self,
-        route: &TextureRoute,
-        carrier: Option<&MaterialKeys>,
-    ) -> Option<AdmittedTexture> {
-        let key = route.key();
-        let image = self.catalog.decode_route(route, |path, tint| {
-            textures::carrier_image(self.base_assets?, carrier?, path, tint)
-        })?;
-        let identity = self.catalog.identity(route)?.with_image(image.image_path);
-        if let Some(slot) = self.slots.get(&identity, carrier.is_some()) {
-            return slot.map(|slot| AdmittedTexture {
-                slot,
-                pack: image.pack,
-            });
-        }
-        let available = self.max_layers.saturating_sub(self.sources.len());
-        if available == 0 {
-            // A full array rejects every later route, so name it rather than
-            // leaving those textures indistinguishable from unusable pack data.
-            self.gaps.saturated_textures += 1;
-            self.catalog.report_full(key);
-            return None;
-        }
-        let mut texture = image.texture;
-        let grid = self.catalog.grid(key);
-        let flipbook = identity.flipbook.as_ref();
-        if flipbook.is_none() {
-            admit_static_rectangle(&mut texture);
-        }
-        let frame_height =
-            if texture.height > texture.width && texture.height.is_multiple_of(texture.width) {
-                texture.width
-            } else {
-                texture.height
-            };
-        let tile = texture
-            .width
-            .max(frame_height)
-            .checked_next_power_of_two()?
-            .max(self.tile_size);
-        let Some(layer_bytes) = self.texture_policy.terrain_bytes(tile, 1) else {
-            self.catalog.report_budget(key);
-            return None;
-        };
-        let frame_bytes = self
-            .texture_policy
-            .source_bytes(texture.width, frame_height, false)?;
-        let available = available
-            .min((MAX_SUBSCRIBER_BYTES / layer_bytes).saturating_sub(self.sources.len()))
-            .min(MAX_SUBSCRIBER_BYTES.saturating_sub(self.source_bytes) / frame_bytes);
-        if available == 0 {
-            self.catalog.report_budget(key);
-            return None;
-        }
-        // Bound full-resolution frame copies before allocating them.
-        let frames = match flipbook {
-            Some(flipbook) => flipbook_frames(
-                &texture,
-                flipbook,
-                available.min(256),
-                self.texture_policy.max_side(),
-            ),
-            None => vec![texture],
-        };
-        if frames
-            .iter()
-            .any(|frame| frame.width >> grid == 0 || frame.height >> grid == 0)
-        {
-            return None;
-        }
-        let added_bytes: usize = frames.iter().map(|frame| frame.rgba8.len()).sum();
-        if frames.is_empty() || self.source_bytes + added_bytes > MAX_SUBSCRIBER_BYTES {
-            return None;
-        }
-        self.tile_size = tile;
-        self.source_bytes += added_bytes;
-        let first = self.sources.len() as u32;
-        let frame_count = frames.len() as u32;
-        self.sources.extend(frames.into_iter().map(|frame| {
-            if grid == 0 {
-                Source::Image(frame)
-            } else {
-                Source::GridImage(frame, grid)
-            }
-        }));
-        let animation = match flipbook {
-            Some(flipbook) if frame_count > 1 => {
-                let frame_start = self.overlay.animation_frames.len() as u32;
-                for layer in first..first + frame_count {
-                    self.overlay
-                        .animation_frames
-                        .push(TextureRef::new(1, layer).expect("bounded layer"));
-                }
-                let animation = Animation {
-                    frame_start,
-                    frame_count,
-                    ticks_per_frame: flipbook.ticks_per_frame,
-                    atlas_index: 0,
-                    atlas_tile_variant: 0,
-                    replicate: 1,
-                    flags: u32::from(flipbook.blend) * assets::ANIMATION_FLAG_BLEND,
-                };
-                self.overlay.animations.push(animation);
-                self.overlay.animations.len() as u32 - 1
-            }
-            _ => NO_ANIMATION,
-        };
-        let admitted = AdmittedTexture {
-            slot: TextureSlot {
-                layer: first,
-                animation,
-            },
-            pack: image.pack,
-        };
-        self.slots
-            .insert(identity, Some(admitted.clone()), carrier.is_some());
-        Some(admitted)
+    /// Resolves a material's complete atlas destination using the same route admission.
+    #[cfg(test)]
+    fn texture_slot_for(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
+        self.route_slot(TextureRoute::Catalog {
+            key: key.to_owned(),
+            variant: selector.0,
+            choice: selector.1,
+        })
     }
 
     fn finish(mut self) -> Option<CompiledBlockOverlay> {

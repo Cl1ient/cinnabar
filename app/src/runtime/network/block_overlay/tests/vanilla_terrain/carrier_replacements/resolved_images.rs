@@ -65,7 +65,7 @@ fn resolved_image_aliases_keep_their_grid_and_animation_policies() {
         let view = timeline_pack(
             json!({"texture_data":{"alias":{"quad":if animated {0} else {1}, "textures":"textures/base_a.png"}}}),
             if animated {
-                json!([{"atlas_tile":"state","frames":[1,0]}])
+                json!([{"atlas_tile":"state","flipbook_texture":"textures/base_a","frames":[1,0]}])
             } else {
                 json!([])
             },

@@ -1,6 +1,9 @@
 //! Successful raster reuse and transactional texture admission.
 
-use super::{Builder, TextureSlot, textures::TextureIdentity};
+use super::{
+    Builder, TextureSlot,
+    textures::{TextureIdentity, TextureStorageKey},
+};
 use std::collections::HashMap;
 
 /// One admitted slot together with its image provider.
@@ -15,15 +18,54 @@ struct CachedTexture {
     serial: u64,
 }
 
+/// Retained physical frames, their source policy, and rollback order.
+struct CachedFrames {
+    storage: Option<super::storage::FrameStorage>,
+    serial: u64,
+}
+
 /// Pack successes are shared with carrier-enabled requests; carrier-only pixels stay optional.
 #[derive(Default)]
 pub(super) struct TextureSlots {
     pack: HashMap<TextureIdentity, CachedTexture>,
     carrier: HashMap<TextureIdentity, CachedTexture>,
     serial: u64,
+    frames: HashMap<(TextureStorageKey, bool), CachedFrames>,
 }
 
 impl TextureSlots {
+    /// Reuses pack frames for either policy while keeping carrier-only frames separate.
+    pub(super) fn frames(
+        &self,
+        key: &TextureStorageKey,
+        carrier: bool,
+    ) -> Option<Option<super::storage::FrameStorage>> {
+        let pack = self.frames.get(&(key.clone(), false));
+        if pack.is_some_and(|entry| entry.storage.is_some()) || !carrier {
+            return pack.map(|entry| entry.storage);
+        }
+        self.frames
+            .get(&(key.clone(), true))
+            .map(|entry| entry.storage)
+    }
+
+    /// Records immutable source admission together with its rollback order.
+    pub(super) fn insert_frames(
+        &mut self,
+        key: TextureStorageKey,
+        storage: Option<super::storage::FrameStorage>,
+        carrier: bool,
+    ) {
+        self.serial += 1;
+        self.frames.insert(
+            (key, carrier),
+            CachedFrames {
+                storage,
+                serial: self.serial,
+            },
+        );
+    }
+
     /// Returns a cached success or failure for the requested image-source policy.
     pub(super) fn get(&self, key: &TextureIdentity, carrier: bool) -> Option<Option<TextureSlot>> {
         let pack = self.pack.get(key);
@@ -113,6 +155,9 @@ impl Builder<'_> {
             .retain(|_, entry| entry.serial <= checkpoint.serial);
         self.slots
             .carrier
+            .retain(|_, entry| entry.serial <= checkpoint.serial);
+        self.slots
+            .frames
             .retain(|_, entry| entry.serial <= checkpoint.serial);
         self.slots.serial = checkpoint.serial;
     }

@@ -33,6 +33,11 @@ impl Entry {
         self
     }
 
+    /// Number of admitted outer state indices, independent of positional alternatives.
+    pub fn variant_count(&self) -> usize {
+        self.variants.len()
+    }
+
     /// Out-of-range state selectors use the default variant.
     pub fn variant(&self, variant: u32) -> &[Choice] {
         &self.variants[self.resolved_variant(variant) as usize]

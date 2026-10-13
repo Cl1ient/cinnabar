@@ -4,7 +4,8 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use crate::texture::flipbook::FlipbookSource;
+mod wire;
 
 mod sources;
 pub use sources::{
@@ -12,22 +13,9 @@ pub use sources::{
 };
 
 /// Sidecar wire version; part of the world carrier's prepared identity.
-pub const MATERIAL_KEYS_SCHEMA: u32 = 8;
+pub const MATERIAL_KEYS_SCHEMA: u32 = 9;
 /// Largest sidecar file the runtime reads.
 pub const MAX_MATERIAL_KEYS_BYTES: u64 = 16 * 1024 * 1024;
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Wire {
-    schema: u32,
-    materials: u32,
-    keys: BTreeMap<String, Vec<u32>>,
-    aliases: BTreeMap<String, String>,
-    fixed_tints: BTreeMap<String, [u8; 3]>,
-    terrain: BTreeMap<Box<str>, serde_json::Value>,
-    material_sources: BTreeMap<u32, MaterialTextureSource>,
-    block_sources: Vec<BlockTextureSource>,
-}
 
 /// Material ids by the terrain texture key they were compiled from.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -39,6 +27,9 @@ pub struct MaterialKeys {
     terrain: BTreeMap<Box<str>, serde_json::Value>,
     material_sources: BTreeMap<u32, MaterialTextureSource>,
     block_sources: Vec<BlockTextureSource>,
+    flipbooks: Box<[FlipbookSource]>,
+    flipbook_selectors: BTreeMap<u32, (u32, u32)>,
+    flipbook_destinations: BTreeMap<Box<str>, Box<[u32]>>,
 }
 
 impl MaterialKeys {
@@ -66,6 +57,9 @@ impl MaterialKeys {
             terrain: BTreeMap::new(),
             material_sources: BTreeMap::new(),
             block_sources: Vec::new(),
+            flipbooks: Box::default(),
+            flipbook_selectors: BTreeMap::new(),
+            flipbook_destinations: BTreeMap::new(),
         }
     }
 
@@ -78,6 +72,11 @@ impl MaterialKeys {
             .into_iter()
             .map(|(key, path)| (key.as_ref().into(), path.as_ref().into()))
             .collect();
+        for key in self.aliases.keys() {
+            self.flipbook_destinations
+                .entry(key.clone())
+                .or_insert_with(|| vec![1].into());
+        }
         self
     }
 
@@ -100,85 +99,61 @@ impl MaterialKeys {
             .map(|(key, tint)| (key.as_ref(), *tint))
     }
 
-    /// Serializes the sidecar for a carrier with `material_count` materials.
+    /// Retains the base pack's animation descriptions beneath optional pack layers.
     #[must_use]
-    pub fn to_json(&self, material_count: u32) -> Vec<u8> {
-        let wire = Wire {
-            schema: MATERIAL_KEYS_SCHEMA,
-            materials: material_count,
-            keys: self
-                .keys
-                .iter()
-                .map(|(key, ids)| (key.to_string(), ids.to_vec()))
-                .collect(),
-            aliases: self
-                .aliases
-                .iter()
-                .map(|(key, path)| (key.to_string(), path.to_string()))
-                .collect(),
-            terrain: self.terrain.clone(),
-            material_sources: self.material_sources.clone(),
-            block_sources: self.block_sources.clone(),
-            fixed_tints: self
-                .fixed_tints
-                .iter()
-                .map(|(key, tint)| (key.to_string(), *tint))
-                .collect(),
-        };
-        serde_json::to_vec(&wire).expect("material key sidecar serializes")
+    pub fn with_flipbooks(mut self, flipbooks: &[FlipbookSource]) -> Self {
+        self.flipbooks = flipbooks.into();
+        self
     }
 
-    /// Parses a sidecar; `None` unless it matches a carrier of `material_count`
-    /// materials exactly.
+    /// Records each material's atlas index and UV variant for animation replacement.
     #[must_use]
-    pub fn from_json(bytes: &[u8], material_count: usize) -> Option<Self> {
-        let wire: Wire = serde_json::from_slice(bytes).ok()?;
-        if wire.schema != MATERIAL_KEYS_SCHEMA || wire.materials as usize != material_count {
-            return None;
-        }
-        if wire
-            .material_sources
-            .keys()
-            .any(|&id| id as usize >= material_count)
-            || wire.block_sources.iter().any(|source| {
-                let mut faces = source.source_faces;
-                faces.sort_unstable();
-                source
-                    .source_faces
-                    .iter()
-                    .any(|&face| face >= crate::BlockFace::ALL.len() as u8)
-                    || (source.cube_binding_eligible
-                        && faces != crate::BlockFace::ALL.map(|face| face as u8))
-            })
-        {
-            return None;
-        }
-        let mut keys = BTreeMap::new();
-        for (key, ids) in wire.keys {
-            if ids.iter().any(|&id| id as usize >= material_count) {
-                return None;
-            }
-            keys.insert(key.into_boxed_str(), ids.into_boxed_slice());
-        }
-        let aliases = wire
-            .aliases
+    pub fn with_flipbook_selectors(
+        mut self,
+        selectors: impl IntoIterator<Item = (u32, (u32, u32))>,
+    ) -> Self {
+        self.flipbook_selectors = selectors.into_iter().collect();
+        self
+    }
+
+    /// Base animation descriptions with their original image routes and timelines.
+    pub fn flipbooks(&self) -> &[FlipbookSource] {
+        &self.flipbooks
+    }
+
+    /// Atlas destination for a material; ordinary unindexed tiles use `(0, 0)`.
+    pub fn flipbook_selector(&self, material: u32) -> (u32, u32) {
+        self.flipbook_selectors
+            .get(&material)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Recorded destinations, used when copying carrier materials.
+    pub fn flipbook_selectors(&self) -> impl Iterator<Item = (u32, (u32, u32))> + '_ {
+        self.flipbook_selectors
+            .iter()
+            .map(|(&material, &selector)| (material, selector))
+    }
+
+    /// Records the number of UV variants at each atlas index, including unused destinations.
+    #[must_use]
+    pub fn with_flipbook_destinations<K: AsRef<str>, C: AsRef<[u32]>>(
+        mut self,
+        destinations: impl IntoIterator<Item = (K, C)>,
+    ) -> Self {
+        self.flipbook_destinations = destinations
             .into_iter()
-            .map(|(key, path)| (key.into_boxed_str(), path.into_boxed_str()))
+            .map(|(key, counts)| (key.as_ref().into(), counts.as_ref().into()))
             .collect();
-        let fixed_tints = wire
-            .fixed_tints
-            .into_iter()
-            .map(|(key, tint)| (key.into_boxed_str(), tint))
-            .collect();
-        Some(
-            Self {
-                keys,
-                aliases,
-                fixed_tints,
-                ..Self::default()
-            }
-            .with_sources(wire.terrain, wire.material_sources, wire.block_sources),
-        )
+        self
+    }
+
+    /// Atlas index and UV-variant bounds derived from the complete base terrain catalog.
+    pub fn flipbook_destinations(&self) -> impl Iterator<Item = (&str, &[u32])> {
+        self.flipbook_destinations
+            .iter()
+            .map(|(key, counts)| (key.as_ref(), counts.as_ref()))
     }
 
     /// Material ids compiled from `key`; empty when the key is unknown.
@@ -196,46 +171,6 @@ impl MaterialKeys {
         self.aliases
             .iter()
             .map(|(key, path)| (key.as_ref(), path.as_ref()))
-    }
-
-    /// Retains reload source facts, with block bindings ordered by sequential visual ID.
-    #[must_use]
-    pub fn with_sources(
-        mut self,
-        terrain: impl IntoIterator<Item = (Box<str>, serde_json::Value)>,
-        materials: impl IntoIterator<Item = (u32, MaterialTextureSource)>,
-        blocks: impl IntoIterator<Item = BlockTextureSource>,
-    ) -> Self {
-        self.terrain = terrain.into_iter().collect();
-        self.material_sources = materials.into_iter().collect();
-        self.block_sources = blocks.into_iter().collect();
-        self.block_sources
-            .sort_unstable_by_key(|source| source.visual);
-        self
-    }
-
-    /// Complete base terrain entries, including state arrays and weighted choices.
-    pub fn terrain_entries(&self) -> impl Iterator<Item = (&str, &serde_json::Value)> {
-        self.terrain
-            .iter()
-            .map(|(key, entry)| (key.as_ref(), entry))
-    }
-
-    /// Source path and state variant of an individual compiled material.
-    pub fn material_source(&self, material: u32) -> Option<&MaterialTextureSource> {
-        self.material_sources.get(&material)
-    }
-
-    /// All material source routes, including independent weighted leaf copies.
-    pub fn material_sources(&self) -> impl Iterator<Item = (u32, &MaterialTextureSource)> {
-        self.material_sources
-            .iter()
-            .map(|(&id, source)| (id, source))
-    }
-
-    /// Per-block binding identities, in the carrier's sequential visual order.
-    pub fn block_sources(&self) -> &[BlockTextureSource] {
-        &self.block_sources
     }
 
     #[must_use]

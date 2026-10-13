@@ -6,7 +6,7 @@ fn animated_replacements_use_the_resolved_default_state() {
     let keys = keys();
     let view = timeline_pack(
         json!({"texture_data":{"state":{"textures":"textures/replacement"}}}),
-        json!([{"atlas_tile":"state","frames":[1,0,1],"ticks_per_frame":3}]),
+        json!([{"atlas_tile":"state","flipbook_texture":"textures/replacement","frames":[1,0,1],"ticks_per_frame":3}]),
         &[(
             "textures/replacement",
             16,
@@ -27,7 +27,7 @@ fn animated_replacements_use_the_resolved_default_state() {
     }
     assert_eq!(runtime.material(1).animation, runtime.material(2).animation);
     assert_eq!(runtime.material(1).texture, runtime.material(2).texture);
-    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 4);
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
     assert_eq!(compiled.overlay.materials.len(), 2);
 }
 
@@ -90,7 +90,7 @@ fn repeated_raster_paths_in_real_later_states_do_not_inherit_the_default_flipboo
     );
     let view = timeline_pack(
         json!({}),
-        json!([{"atlas_tile":"state","frames":[1,0,1],"ticks_per_frame":3}]),
+        json!([{"atlas_tile":"state","flipbook_texture":"textures/shared","frames":[1,0,1],"ticks_per_frame":3}]),
         &[(
             "textures/shared",
             16,

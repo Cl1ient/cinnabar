@@ -2,26 +2,24 @@
 
 use std::collections::HashMap;
 
+use assets::texture::flipbook::FlipbookSource;
 use resource_pack::LayeredPackView;
-use serde_json::Value;
 
 use pack_runtime::pack_textures::DecodedTexture;
 mod carrier;
+mod identity;
+pub(super) use identity::{TextureIdentity, TexturePath, TextureStorageKey};
+mod decoding;
 mod diagnostics;
+mod frames;
 mod terrain;
 pub(super) use carrier::carrier_image;
 use diagnostics::{FailureReason, TextureDiagnostics};
-use pack_runtime::pack_textures::{
-    MAX_CATALOG_ENTRIES, parse_pack_json, resolve_pack_texture_with_policy,
-};
+#[cfg(test)]
+pub(super) use frames::shrink_to_max;
+pub(super) use frames::{FrameSequence, flipbook_frames, resample_square};
+use pack_runtime::pack_textures::normalize_texture_path;
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
-
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub(super) struct Flipbook {
-    pub(super) frames: Option<Vec<u32>>,
-    pub(super) ticks_per_frame: u32,
-    pub(super) blend: bool,
-}
 
 /// Pixels supplied by either a pack image or the immutable carrier.
 pub(super) struct TextureImage {
@@ -31,37 +29,16 @@ pub(super) struct TextureImage {
     pub(super) pack: bool,
 }
 
-/// Pixel and animation policy shared by equivalent catalog and recorded-path routes.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub(super) struct TextureIdentity {
-    path: TexturePath,
-    tint: Option<[u8; 3]>,
-    grid: u8,
-    pub(super) flipbook: Option<Flipbook>,
-}
-
-/// Keeps logical aliases separate from resolved filenames that happen to share their spelling.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-enum TexturePath {
-    Catalog(String),
-    Image(String),
-}
-
-impl TextureIdentity {
-    /// Replaces the catalog spelling with the source that actually supplied the pixels.
-    pub(super) fn with_image(mut self, path: String) -> Self {
-        self.path = TexturePath::Image(path);
-        self
-    }
-}
-
 /// Texture keys resolved across the stack; a higher pack replaces a key.
 pub(super) struct TextureCatalog<'a> {
     view: &'a LayeredPackView,
     terrain: HashMap<String, pack_runtime::pack_textures::terrain::Entry>,
     base_terrain: HashMap<String, pack_runtime::pack_textures::terrain::Entry>,
-    flipbooks: HashMap<String, Flipbook>,
+    flipbooks: HashMap<String, Vec<FlipbookSource>>,
+    destinations: HashMap<String, Vec<u32>>,
     diagnostics: TextureDiagnostics,
+    #[cfg(test)]
+    pub(super) decode_attempts: std::cell::Cell<usize>,
 }
 
 impl<'a> TextureCatalog<'a> {
@@ -99,50 +76,61 @@ impl<'a> TextureCatalog<'a> {
         let server_terrain = pack_runtime::pack_textures::terrain::entries(view);
         let diagnostics = TextureDiagnostics::default();
         diagnostics.catalogs(view);
-        let mut flipbooks = HashMap::new();
-        for layer in view.read_layers("textures/flipbook_textures.json") {
-            let Some(Value::Array(entries)) = parse_pack_json(&layer) else {
+        let destinations = pack_runtime::pack_flipbooks::destinations(view, base);
+        let mut flipbooks = HashMap::<String, Vec<FlipbookSource>>::new();
+        for mut source in pack_runtime::pack_flipbooks::flipbooks(
+            view,
+            base.map_or(&[], assets::material_keys::MaterialKeys::flipbooks),
+        ) {
+            let Some(count) = destinations
+                .get(source.atlas_tile.as_ref())
+                .and_then(|counts| counts.get(source.atlas_index as usize))
+            else {
+                diagnostics.failure(
+                    FailureReason::AnimationDestinationMissing,
+                    &source.atlas_tile,
+                    Some(&source.texture_path),
+                );
                 continue;
             };
-            for entry in entries.iter().take(MAX_CATALOG_ENTRIES) {
-                let Some(tile) = entry["atlas_tile"].as_str() else {
-                    continue;
-                };
-                let frames = entry["frames"].as_array().map(|frames| {
-                    frames
-                        .iter()
-                        .filter_map(|frame| {
-                            frame.as_u64().and_then(|frame| u32::try_from(frame).ok())
-                        })
-                        .collect()
-                });
-                let ticks = entry["ticks_per_frame"]
-                    .as_u64()
-                    .unwrap_or(1)
-                    .clamp(1, 1 << 16);
-                flipbooks.insert(
-                    tile.to_owned(),
-                    Flipbook {
-                        frames,
-                        ticks_per_frame: ticks as u32,
-                        blend: entry["blend_frames"]
-                            .as_bool()
-                            .unwrap_or(pack_compiler::DEFAULT_BLEND_FRAMES),
-                    },
-                );
-            }
+            source.atlas_tile_variant = normalize_variant(source.atlas_tile_variant, *count);
+            flipbooks
+                .entry(source.atlas_tile.to_string())
+                .or_default()
+                .push(source);
         }
         Self {
             view,
             terrain: server_terrain,
             base_terrain: terrain,
             flipbooks,
+            destinations,
             diagnostics,
+            #[cfg(test)]
+            decode_attempts: std::cell::Cell::new(0),
         }
     }
 
-    pub(super) fn flipbook(&self, key: &str) -> Option<&Flipbook> {
-        self.flipbooks.get(key)
+    /// Returns the last animation created for a destination, including all-variant descriptions.
+    pub(super) fn flipbook(&self, key: &str, selector: (u32, u32)) -> Option<&FlipbookSource> {
+        let selector = self.normalize_selector(key, selector);
+        self.flipbooks.get(key)?.iter().rev().find(|source| {
+            source.atlas_index == selector.0
+                && (source.all_variants || source.atlas_tile_variant == selector.1)
+        })
+    }
+
+    /// Clamps material indices to the winning layout, then normalizes their UV variants.
+    pub(super) fn normalize_selector(&self, key: &str, selector: (u32, u32)) -> (u32, u32) {
+        let Some(counts) = self
+            .destinations
+            .get(key)
+            .filter(|counts| !counts.is_empty())
+        else {
+            return selector;
+        };
+        let index = selector.0.min(counts.len() as u32 - 1);
+        (index, normalize_variant(selector.1, counts[index as usize]))
     }
 
     /// Returns the winning terrain entry's normalized UV-grid exponent.
@@ -219,70 +207,61 @@ impl<'a> TextureCatalog<'a> {
                 (variant, choice)
             }
         };
-        Some((variant, choice, entry.variant(variant).get(choice)?))
+        Some((
+            variant,
+            choice,
+            entry
+                .variant(variant)
+                .get(choice)
+                .or_else(|| entry.variant(variant).first())?,
+        ))
     }
 
     /// Retains every pixel or animation property that can change an admitted raster slot.
     pub(super) fn identity(&self, route: &super::TextureRoute) -> Option<TextureIdentity> {
-        let Some((variant, index, choice)) = self.resolve_choice(route) else {
+        let Some((resolved_variant, index, choice)) = self.resolve_choice(route) else {
             self.diagnostics
                 .failure(FailureReason::TerrainKeyMissing, route.key(), None);
             return None;
         };
-        let animate = variant == 0 && index == 0;
+        let requested_variant = match route {
+            super::TextureRoute::Catalog { variant, .. }
+            | super::TextureRoute::Path { variant, .. } => *variant,
+        };
+        let variant = if self.terrain.contains_key(route.key())
+            || self.destinations.get(route.key()).is_some_and(|counts| {
+                self.entry(route.key())
+                    .is_some_and(|entry| counts.len() == entry.variant_count())
+            }) {
+            resolved_variant
+        } else {
+            requested_variant
+        };
+        let selector = self.normalize_selector(route.key(), (variant, index as u32));
+        let flipbook = self.flipbook(route.key(), selector).cloned();
         Some(TextureIdentity {
-            path: TexturePath::Catalog(choice.path.clone()),
+            path: TexturePath::Catalog(normalize_texture_path(&choice.path).to_ascii_lowercase()),
             tint: choice.tint,
             grid: self.grid(route.key()),
-            flipbook: animate
-                .then(|| self.flipbook(route.key()).cloned())
-                .flatten(),
+            selector: if flipbook.is_some() { selector } else { (0, 0) },
+            flipbook,
         })
     }
 
-    /// Resolves one route, using normalized image filenames for both pack and carrier sources.
-    pub(super) fn decode_route(
+    /// Identifies immutable frames without their destination's playback timing.
+    pub(super) fn storage_key(
         &self,
         route: &super::TextureRoute,
-        mut carrier: impl FnMut(&str, Option<[u8; 3]>) -> Option<TextureImage>,
-    ) -> Option<TextureImage> {
-        use pack_runtime::pack_textures::texture_image_paths;
-        let key = route.key();
-        let Some((_, _, choice)) = self.resolve_choice(route) else {
-            self.diagnostics
-                .failure(FailureReason::TerrainKeyMissing, key, None);
-            return None;
-        };
-        let mut image = resolve_pack_texture_with_policy(
-            self.view,
-            &choice.path,
-            assets::texture::policy::device_policy(),
-            true,
-        )
-        .map(|resolved| TextureImage {
-            texture: resolved.texture,
-            image_path: resolved.image_path,
-            baked_tint: None,
-            pack: true,
+        source: Option<&FlipbookSource>,
+    ) -> Option<TextureStorageKey> {
+        let (_, _, choice) = self.resolve_choice(route)?;
+        let path = source.map_or(choice.path.as_str(), |source| source.texture_path.as_ref());
+        Some(TextureStorageKey {
+            path: TexturePath::Catalog(normalize_texture_path(path).to_ascii_lowercase()),
+            grid: self.grid(route.key()),
+            tint: choice.tint,
+            frames: source.map(|source| (source.frames.clone(), source.replicate)),
         })
-        .or_else(|| {
-            texture_image_paths(&choice.path)
-                .into_iter()
-                .find_map(|path| carrier(&path, choice.tint))
-        });
-        if let Some(image) = image.as_mut()
-            && image.baked_tint.is_none()
-            && let Some(tint) = choice.tint
-        {
-            pack_compiler::apply_atlas_tint(&mut image.texture.rgba8, tint);
-        }
-        if image.is_none() {
-            let reason = diagnostics::failure_reason(self.view, &choice.path);
-            if self.terrain.contains_key(key) || reason != FailureReason::TextureFileMissing {
-                self.diagnostics.failure(reason, key, Some(&choice.path));
-            }
-        }
-        image
     }
 
     /// Records a route the overlay could not admit because its texture array is full.
@@ -303,89 +282,7 @@ impl<'a> TextureCatalog<'a> {
     }
 }
 
-/// Splits a vertical strip into up to `max_frames` square frames, each shrunk to
-/// `max_side`; a non-strip image is its single shrunk frame. Frames are shrunk
-/// as they are cut so the caller never holds full-size copies.
-pub(super) fn flipbook_frames(
-    texture: &DecodedTexture,
-    flipbook: &Flipbook,
-    max_frames: usize,
-    max_side: u32,
-) -> Vec<DecodedTexture> {
-    let side = texture.width;
-    if max_frames == 0 {
-        return Vec::new();
-    }
-    if texture.height <= side || !texture.height.is_multiple_of(side) {
-        return vec![shrink_to_max(texture, max_side)];
-    }
-    let count = texture.height / side;
-    let order = flipbook
-        .frames
-        .clone()
-        .filter(|frames| !frames.is_empty())
-        .unwrap_or_else(|| (0..count).collect());
-    let frame_bytes = (side * side * 4) as usize;
-    order
-        .into_iter()
-        .take(max_frames)
-        .map(|frame| {
-            let start = (frame.min(count - 1) as usize) * frame_bytes;
-            let frame = DecodedTexture {
-                width: side,
-                height: side,
-                rgba8: texture.rgba8[start..start + frame_bytes].into(),
-            };
-            shrink_to_max(&frame, max_side)
-        })
-        .collect()
-}
-
-/// Downscales aspect-preserving so the longest side is at most `max_side`;
-/// smaller images are returned unchanged. Nearest-neighbour keeps pixel art crisp.
-pub(super) fn shrink_to_max(texture: &DecodedTexture, max_side: u32) -> DecodedTexture {
-    let longest = texture.width.max(texture.height);
-    if longest <= max_side {
-        return texture.clone();
-    }
-    let scale = |side: u32| (side * max_side / longest).max(1);
-    let (width, height) = (scale(texture.width), scale(texture.height));
-    let mut rgba8 = Vec::with_capacity((width * height * 4) as usize);
-    for y in 0..height {
-        let source_y = (u64::from(y) * u64::from(texture.height) / u64::from(height)) as usize;
-        for x in 0..width {
-            let source_x = (u64::from(x) * u64::from(texture.width) / u64::from(width)) as usize;
-            let offset = (source_y * texture.width as usize + source_x) * 4;
-            rgba8.extend_from_slice(&texture.rgba8[offset..offset + 4]);
-        }
-    }
-    DecodedTexture {
-        width,
-        height,
-        rgba8: rgba8.into_boxed_slice(),
-    }
-}
-
-/// Resamples to a square power-of-two tile: exact halvings in linear light when
-/// possible, nearest-neighbour otherwise so pixel art stays crisp.
-pub(super) fn resample_square(texture: &DecodedTexture, tile: u32) -> Box<[u8]> {
-    if texture.width == texture.height && texture.width.is_power_of_two() && texture.width >= tile {
-        let mut pixels = texture.rgba8.clone();
-        let mut size = texture.width;
-        while size > tile {
-            pixels = assets::downsample_linear_premultiplied(&pixels, size);
-            size /= 2;
-        }
-        return pixels;
-    }
-    let mut pixels = Vec::with_capacity((tile * tile * 4) as usize);
-    for y in 0..tile {
-        let source_y = (u64::from(y) * u64::from(texture.height) / u64::from(tile)) as usize;
-        for x in 0..tile {
-            let source_x = (u64::from(x) * u64::from(texture.width) / u64::from(tile)) as usize;
-            let offset = (source_y * texture.width as usize + source_x) * 4;
-            pixels.extend_from_slice(&texture.rgba8[offset..offset + 4]);
-        }
-    }
-    pixels.into_boxed_slice()
+/// Uses variant zero when the requested UV set is outside the destination's bounds.
+fn normalize_variant(variant: u32, count: u32) -> u32 {
+    if variant < count { variant } else { 0 }
 }

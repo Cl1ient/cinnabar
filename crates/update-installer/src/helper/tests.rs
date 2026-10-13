@@ -98,3 +98,44 @@ fn an_abandoned_manual_copy_is_pruned_without_touching_ready() {
     assert!(!directory.exists());
     assert!(root.path().join("ready").is_dir());
 }
+
+#[cfg(windows)]
+#[test]
+fn retired_copies_reject_new_readers_until_a_blocked_cleanup_can_finish() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let (directory, reader) = snapshot_directory(root.path()).unwrap();
+    let directory = directory.keep();
+    let package = directory.join("installer");
+    fs::write(&package, "manual package").unwrap();
+    drop(reader);
+    let blocker = File::options()
+        .read(true)
+        .share_mode(0)
+        .open(package)
+        .unwrap();
+    let later = SystemTime::now() + HANDOFF_WINDOW * 2;
+    prune(root.path(), later);
+    assert!(
+        directory.exists(),
+        "the open installer blocks directory retirement"
+    );
+    assert_eq!(
+        hold_snapshot(&directory).unwrap_err().kind(),
+        io::ErrorKind::NotFound
+    );
+
+    File::options()
+        .write(true)
+        .open(directory.join(LOCK))
+        .unwrap()
+        .set_modified(later)
+        .unwrap();
+    drop(blocker);
+    prune(root.path(), later);
+    assert!(
+        !directory.exists(),
+        "a retired copy is retried without another handoff window"
+    );
+}

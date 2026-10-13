@@ -21,6 +21,7 @@ mod alpha;
 mod attack;
 mod combat;
 mod diagnostics;
+mod dials;
 mod elytra;
 mod java;
 mod modern;
@@ -44,8 +45,7 @@ use {
         atlas::{Placement, SpriteAtlas},
         display::{
             FirstPersonHand, FirstPersonShape, LAYER_BOOTS, LAYER_CHESTPLATE, LAYER_HELMET,
-            LAYER_LEGGINGS, LAYER_MAIN_HAND, LAYER_OFF_HAND, first_person_display,
-            head_block_display, view_bone,
+            LAYER_LEGGINGS, LAYER_MAIN_HAND, LAYER_OFF_HAND, head_block_display, view_bone,
         },
     },
     render_model::equipment::{self as attachable, blocks::BlockSheets},
@@ -141,6 +141,8 @@ pub struct EquipmentRuntime {
     java_rasters: BTreeMap<AttachableMeshKey, Option<JavaRasterFrame>>,
     /// Render-controller models queued beyond the scene's binding geometries.
     selected_geometries: std::collections::BTreeSet<EntityRigId>,
+    /// The strip frame each held dial (compass or clock) shows this frame.
+    dial_frames: inventory::DialFrames,
 }
 
 impl EquipmentRuntime {
@@ -312,6 +314,7 @@ impl EquipmentRuntime {
             attachable_meshes: BTreeMap::new(),
             java_rasters: BTreeMap::new(),
             selected_geometries: Default::default(),
+            dial_frames: Default::default(),
             assets,
             icons,
             placements: atlas.placements,
@@ -565,20 +568,21 @@ impl EquipmentRuntime {
             (arms.right && (is("rightArm") || is("rightSleeve")))
                 || (arms.left && (is("leftArm") || is("leftSleeve")))
         };
-        let mask = |pose: &[RenderBoneTransform]| {
-            pose.iter()
-                .zip(&bones.names)
-                .map(|(bone, name)| if visible(name) { *bone } else { hidden_bone() })
-                .collect::<Vec<_>>()
-        };
+        let poses = [&body.input.previous_bones, &body.input.current_bones];
+        let sampled = self.poses.sample_pair(
+            body,
+            FIRST_PERSON_MASK_LAYER,
+            pose_len,
+            |endpoint, index| {
+                Some(if visible(&bones.names[index]) {
+                    poses[endpoint][index]
+                } else {
+                    hidden_bone()
+                })
+            },
+        )?;
         let mut masked = body.clone();
-        let (previous, current) = (
-            mask(&body.input.previous_bones),
-            mask(&body.input.current_bones),
-        );
-        [masked.input.previous_bones, masked.input.current_bones] =
-            self.poses
-                .share(body, FIRST_PERSON_MASK_LAYER, [&previous, &current]);
+        [masked.input.previous_bones, masked.input.current_bones] = sampled;
         Some(masked)
     }
 
@@ -590,6 +594,22 @@ impl EquipmentRuntime {
         body: &ActorRigSubmission,
         item: &WornItem,
         hand: impl Into<FirstPersonHand>,
+    ) -> Option<FirstPersonItem> {
+        self.first_person_item_for_profile(
+            body,
+            item,
+            hand.into(),
+            render_api::DEFAULT_COMBAT_VISUALS,
+        )
+    }
+
+    /// Uses the selected attack profile for the fallback camera-space item envelope.
+    pub fn first_person_item_for_profile(
+        &mut self,
+        body: &ActorRigSubmission,
+        item: &WornItem,
+        hand: FirstPersonHand,
+        profile: render_api::CombatVisuals,
     ) -> Option<FirstPersonItem> {
         let (_, bones) = self.body_bones_for(body.input.rig)?;
         let pose_len = bones.names.len();
@@ -607,21 +627,23 @@ impl EquipmentRuntime {
                 mirrored_art: item.grip.mirrored_art(),
             }
         };
-        let hand = hand.into();
-        let state = actor_animation::ItemAnimationState {
-            attack_time: hand.swing,
-            arm_height: hand.equip,
+        if !hand.swing.is_finite() || !hand.equip.is_finite() {
+            return None;
+        }
+        let hand = if hand.consume.is_none()
+            && !matches!(shape, FirstPersonShape::Sprite { mirrored_art: true })
+        {
+            FirstPersonHand {
+                swing: hand.swing.clamp(0.0, 1.0),
+                equip: hand.equip.clamp(0.0, 1.0),
+                ..hand
+            }
+        } else {
+            hand
         };
-        let bone = match (shape, hand.consume) {
-            (FirstPersonShape::Block, None) => super::first_person::block_pose(state),
-            (
-                FirstPersonShape::Sprite {
-                    mirrored_art: false,
-                },
-                None,
-            ) => super::first_person::sprite_pose(state),
-            _ => view_bone(first_person_display(shape, hand)),
-        }?;
+        let bone = view_bone(super::display::first_person_display_for_profile(
+            shape, hand, profile,
+        ))?;
         let poses = self
             .poses
             .share(body, FIRST_PERSON_ITEM_LAYER, [&[bone], &[bone]]);
@@ -653,8 +675,7 @@ impl EquipmentRuntime {
                 .session_sprite(&item.identifier, item.metadata)
                 .and_then(|(index, _, _)| self.session_sprite_pixels(index))
                 .or_else(|| {
-                    self.icons
-                        .lookup_index(&item.identifier, item.metadata)
+                    self.held_icon_index(item)
                         .and_then(|index| self.icons.sprites().get(index))
                 })?;
             super::first_person::offhand_sprite_pose(equipped, [sprite.width, sprite.height])

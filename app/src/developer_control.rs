@@ -5,6 +5,7 @@ mod actors;
 mod camera;
 mod cape;
 mod capture;
+mod cursor_isolation;
 mod input;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -78,6 +79,7 @@ fn window_options(mut window: Window, size: Option<[u32; 2]>, hidden: bool) -> W
 
 /// Starts the endpoint when `CINNABAR_DEVELOPER_CONTROL` names its file.
 pub(crate) fn configure(app: &mut App) {
+    cursor_isolation::configure(app, hidden_window_requested());
     #[cfg(target_os = "macos")]
     if hidden_window_requested() {
         macos::verify_after_launch(app);

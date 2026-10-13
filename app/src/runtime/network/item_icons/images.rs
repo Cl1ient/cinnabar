@@ -23,12 +23,9 @@ pub(super) fn resolve_key(
             .iter()
             .enumerate()
             .filter_map(|(metadata, path)| {
-                let texture = first_frame(decode_pack_texture_with_policy(
-                    view,
-                    path,
-                    device_policy(),
-                    true,
-                )?);
+                let mut texture =
+                    decode_pack_texture_with_policy(view, path, device_policy(), true)?;
+                texture.retain_first_strip_frame();
                 if texture.rgba8.len() > remaining_bytes {
                     return None;
                 }
@@ -49,8 +46,10 @@ pub(super) fn resolve_key(
         format!("textures/items/{key}"),
         format!("textures/items/{bare}"),
     ] {
-        if let Some(texture) = decode_pack_texture_with_policy(view, &path, device_policy(), true) {
-            let texture = first_frame(texture);
+        if let Some(mut texture) =
+            decode_pack_texture_with_policy(view, &path, device_policy(), true)
+        {
+            texture.retain_first_strip_frame();
             if texture.rgba8.len() <= remaining_bytes {
                 return Ok(vec![(0, texture)]);
             }
@@ -58,20 +57,6 @@ pub(super) fn resolve_key(
     }
     tried.push(format!("no textures/items/{bare}"));
     Err(tried.join("; "))
-}
-
-/// Vertical strips animate in vanilla; the static icon is their first frame.
-pub(super) fn first_frame(texture: DecodedTexture) -> DecodedTexture {
-    let side = texture.width;
-    if texture.height <= side || !texture.height.is_multiple_of(side) {
-        return texture;
-    }
-    let bytes = (side * side * 4) as usize;
-    DecodedTexture {
-        width: side,
-        height: side,
-        rgba8: texture.rgba8[..bytes].into(),
-    }
 }
 
 /// Retains the source pixels and dimensions of an admitted item frame.

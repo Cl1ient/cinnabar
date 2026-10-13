@@ -109,8 +109,8 @@ use {
             flush_server_form_network,
             gameplay_touch::drive_gameplay_touch_targets,
             presentation::{
-                drive_menu_panorama, observe_mount_jump_input, prepare_ui_runtime,
-                publish_ui_runtime,
+                dials::advance_dials, drive_menu_panorama, observe_mount_jump_input,
+                prepare_ui_runtime, publish_ui_runtime,
             },
         },
     },
@@ -266,6 +266,12 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
                 .after(crate::hotbar::flush_hotbar_selection)
                 .after(reconcile_world_stream_before_physics)
                 .before(ClientFrameSet::Physics),
+        )
+        .add_systems(
+            Update,
+            advance_dials
+                .after(ClientFrameSet::Camera)
+                .before(ClientFrameSet::ActorPreparation),
         )
         .add_systems(
             Update,
@@ -946,7 +952,6 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
 
 #[cfg(test)]
 mod direct_session_directory_tests;
-
 #[cfg(test)]
 mod preg_startup_tests;
 #[cfg(test)]

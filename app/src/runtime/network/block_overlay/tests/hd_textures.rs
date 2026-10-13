@@ -159,3 +159,23 @@ fn over_budget_route_keeps_other_terrain_at_full_quality() {
         0
     );
 }
+
+#[test]
+fn oversized_horizontal_terrain_without_animation_keeps_the_first_frame() {
+    let (view, blocks) = fixture(&[("strip", 8192, 64)]);
+    let compiled = compile_block_overlay(&view, &blocks, false, None).unwrap();
+    assert_eq!(compiled.gaps.missing_textures, 0);
+    assert!(compiled.overlay.animations.is_empty());
+    let material = compiled.overlay.materials[compiled.overlay.visuals[0].faces[0] as usize];
+    assert_eq!(
+        compiled.overlay.texture_source_sizes[material.texture.layer() as usize],
+        [64; 2]
+    );
+    let mip = &compiled.overlay.texture.as_ref().unwrap().mips[0];
+    assert_eq!(mip.size, 64);
+    let offset = material.texture.layer() as usize * 64 * 64 * 4;
+    assert_eq!(
+        &mip.rgba8[offset + (63 * 64 + 63) * 4..][..4],
+        &[0, 0, 0, 255]
+    );
+}

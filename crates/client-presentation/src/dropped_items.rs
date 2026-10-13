@@ -24,6 +24,7 @@ use {
 
 use client_ui::ui_runtime::presentation::UiPresentationRuntime;
 
+mod dials;
 mod lighting;
 
 // Provisional world sizes and colours; each needs independent measurement.
@@ -49,6 +50,7 @@ pub(super) struct DroppedItemPublisher<'w, 's> {
     textures: Option<Res<'w, ChunkTextureAssets>>,
     placements: Option<Res<'w, render_scene::StaticItemPlacementsResource>>,
     cache: Local<'s, ModelCache>,
+    device: Option<Res<'w, bevy::render::renderer::RenderDevice>>,
 }
 
 fn tint_rgba(flags: u32) -> u32 {
@@ -268,6 +270,7 @@ impl DroppedItemPublisher<'_, '_> {
         )
     }
 
+    /// Resolves a sprite model, reusing its image and placement identity.
     fn icon_model(
         cache: &mut ModelCache,
         icons: &UiPresentationRuntime,
@@ -279,26 +282,7 @@ impl DroppedItemPublisher<'_, '_> {
         cache.model(
             key,
             || Some(1),
-            || {
-                // Icons that are not ready yet are retried on the next frame.
-                let pixels = icons.item_sprite(
-                    identifier,
-                    metadata,
-                    assets::texture::policy::device_policy()
-                        .max_side()
-                        .min(MAX_ITEM_SPRITE_SIDE),
-                )?;
-                let sprite = DroppedItemSprite {
-                    width: pixels.width,
-                    height: pixels.height,
-                    rgba8: Arc::from(pixels.rgba8),
-                };
-                Some(if native_drop {
-                    DroppedItemModel::NativeSprite(sprite)
-                } else {
-                    DroppedItemModel::Sprite(sprite)
-                })
-            },
+            || icon_sprite(icons, identifier, metadata, native_drop),
         )
     }
 
@@ -371,6 +355,7 @@ impl DroppedItemPublisher<'_, '_> {
         let mut terrain_instances = Vec::new();
 
         let dropped = stream.authority().dropped_items(partial_tick);
+        let mut dial_models = dials::DialModels::default();
         cache.begin_frame();
         // Protect all current consumers before admitting new models, regardless of iteration order.
         for view in &dropped {
@@ -380,13 +365,8 @@ impl DroppedItemPublisher<'_, '_> {
                 cache.request(&ModelKey::Block { hashed, id });
             }
             if let Some(identifier) = view.item.identifier.as_ref() {
-                let (identifier, metadata) = UiPresentationRuntime::item_icon_key(
-                    identifier,
-                    view.item.identity.metadata,
-                    view.item.use_animation,
-                    view.item.charged_projectile_role,
-                    None,
-                );
+                dial_models.observe(icons, identifier, view.item.identity.metadata);
+                let (identifier, metadata) = dropped_icon_key(icons, identifier, &view.item);
                 if let Some(icon) = icons.item_icon(identifier, metadata) {
                     cache.request(&ModelKey::icon(icon, true));
                 }
@@ -432,13 +412,8 @@ impl DroppedItemPublisher<'_, '_> {
             let (model, shape) = match cube {
                 Some(model) => (model, DroppedItemShape::Cube),
                 None => {
-                    let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
-                        identifier,
-                        view.item.identity.metadata,
-                        view.item.use_animation,
-                        view.item.charged_projectile_role,
-                        None,
-                    );
+                    let (icon_identifier, variant) =
+                        dropped_icon_key(icons, identifier, &view.item);
                     let Some(model) =
                         Self::icon_model(cache, icons, icon_identifier, variant, true)
                     else {
@@ -603,7 +578,25 @@ impl DroppedItemPublisher<'_, '_> {
                 );
             }
         }
-        cache.finish_frame();
+        dial_models.warm(cache, icons);
+        let (policy, max_array_layers) = self.device.as_ref().map_or_else(
+            || {
+                (
+                    assets::texture::policy::device_policy(),
+                    render_model::MAX_ITEM_LAYERS,
+                )
+            },
+            |device| {
+                let limits = device.limits();
+                (
+                    assets::texture::policy::TexturePolicy::for_device(
+                        limits.max_texture_dimension_2d,
+                    ),
+                    limits.max_texture_array_layers as usize,
+                )
+            },
+        );
+        cache.finish_frame(policy, max_array_layers);
         scene.publish(
             cache.revision,
             Arc::clone(&cache.shared),
@@ -614,6 +607,52 @@ impl DroppedItemPublisher<'_, '_> {
         scene.set_glint(glint.0, glint.1.scroll());
         scene.publish_terrain_instances(stream.authority().actor_session_id(), &terrain_instances);
     }
+}
+
+/// Builds icon pixels lazily; unavailable sprites are retried on the next frame.
+fn icon_sprite(
+    icons: &UiPresentationRuntime,
+    identifier: &str,
+    metadata: u32,
+    native_drop: bool,
+) -> Option<DroppedItemModel> {
+    let pixels = icons.item_sprite(
+        identifier,
+        metadata,
+        assets::texture::policy::device_policy()
+            .max_side()
+            .min(MAX_ITEM_SPRITE_SIDE),
+    )?;
+    let sprite = DroppedItemSprite {
+        width: pixels.width,
+        height: pixels.height,
+        rgba8: Arc::from(pixels.rgba8),
+    };
+    Some(if native_drop {
+        DroppedItemModel::NativeSprite(sprite)
+    } else {
+        DroppedItemModel::Sprite(sprite)
+    })
+}
+
+/// The icon identity dropped `item` (with `identifier`) draws: a dial's current strip frame,
+/// or its ordinary icon.
+fn dropped_icon_key<'a>(
+    icons: &UiPresentationRuntime,
+    identifier: &'a str,
+    item: &client_world::CanonicalItemStack,
+) -> (&'a str, u32) {
+    icons
+        .dial_icon_key(identifier, item.identity.metadata)
+        .unwrap_or_else(|| {
+            UiPresentationRuntime::item_icon_key(
+                identifier,
+                item.identity.metadata,
+                item.use_animation,
+                item.charged_projectile_role,
+                None,
+            )
+        })
 }
 
 #[cfg(test)]

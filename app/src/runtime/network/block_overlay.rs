@@ -2,11 +2,17 @@
 //! the vanilla carrier. Anything missing or unsupported degrades to the
 //! diagnostic look for that block and is counted, never failing the session.
 
+use assets::material_keys::MaterialKeys;
+
 mod condition;
 mod geometry_inputs;
 use pack_compiler::block_geometry as geometry;
 mod legacy;
+mod storage;
+mod texture_admission;
 mod textures;
+use texture_admission::TextureSlots;
+mod vanilla;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -14,13 +20,13 @@ use std::{
 };
 
 use assets::{
-    Animation, BlockFlags, BlockOverlay, BlockVisual, ContributorRole, LightProperties,
+    BlockFlags, BlockOverlay, BlockVisual, ContributorRole, LightProperties,
     MATERIAL_FLAG_ALPHA_BLEND, MATERIAL_FLAG_ALPHA_CUTOUT, MATERIAL_FLAG_BIRCH_FOLIAGE,
     MATERIAL_FLAG_DISABLE_AO, MATERIAL_FLAG_DISABLE_FACE_DIMMING, MATERIAL_FLAG_DRY_FOLIAGE,
     MATERIAL_FLAG_EVERGREEN_FOLIAGE, MATERIAL_FLAG_FOLIAGE_TINT, MATERIAL_FLAG_GRASS_TINT,
-    MATERIAL_FLAG_WATER_TINT, MODEL_QUAD_FLAG_TWO_SIDED, Material, MaterialKeys, MaterialOverride,
-    ModelQuad, ModelTemplate, NO_ANIMATION, NO_MODEL_TEMPLATE, TextureArray, TextureMip,
-    TextureRef, VisualKind, VisualSupport,
+    MATERIAL_FLAG_WATER_TINT, MODEL_QUAD_FLAG_TWO_SIDED, Material, MaterialOverride, ModelQuad,
+    ModelTemplate, NO_ANIMATION, NO_MODEL_TEMPLATE, TextureArray, TextureMip, TextureRef,
+    VisualKind, VisualSupport,
 };
 use protocol::{CustomBlocks, CustomVisualComponents};
 use resource_pack::LayeredPackView;
@@ -29,9 +35,9 @@ use self::{
     condition::StateVisual,
     geometry::{FACE_NAMES, FaceQuad, Geometry},
     geometry_inputs::geometry_catalog,
-    textures::{TextureCatalog, admit_static_rectangle, flipbook_frames, source_mip_chain},
+    textures::{TextureCatalog, admit_static_rectangle, source_mip_chain},
 };
-use assets::texture::policy::{MAX_SUBSCRIBER_BYTES, TexturePolicy, device_policy};
+use assets::texture::policy::{TexturePolicy, device_policy};
 use pack_runtime::pack_textures::DecodedTexture;
 
 const FULL_BLOCK: &str = "minecraft:geometry.full_block";
@@ -59,18 +65,32 @@ pub(crate) struct OverlayGaps {
 pub(crate) struct CompiledBlockOverlay {
     pub(crate) overlay: BlockOverlay,
     pub(crate) gaps: OverlayGaps,
+    pub(crate) vanilla_carried: Vec<CarriedBlock>,
+}
+
+/// Carried textures for one eligible vanilla full cube.
+#[derive(Clone, Debug)]
+pub(crate) struct CarriedBlock {
+    pub(crate) visual: u32,
+    pub(crate) faces: [u32; 6],
 }
 
 /// Returns visuals for the admitted custom prefix in palette or hashed-state order.
 /// Rejected runs stay unbacked; vanilla overrides may produce an overlay without custom blocks.
+/// `base_assets` supplies the base carrier so faces naming
+/// vanilla textures the server stack does not ship can reuse the base page
+/// instead of degrading; server rasters still win whenever they decode.
 pub(super) fn compile_block_overlay(
     view: &LayeredPackView,
     blocks: &CustomBlocks,
     hashed: bool,
     vanilla_keys: Option<&MaterialKeys>,
     max_texture_array_layers: u32,
+    base_assets: Option<&assets::RuntimeAssets>,
 ) -> Option<CompiledBlockOverlay> {
-    if max_texture_array_layers == 0 {
+    if max_texture_array_layers == 0
+        || base_assets.is_some_and(|base| base.materials().len() >= assets::MAX_MATERIALS)
+    {
         return None;
     }
     let legacy = legacy::TextureBindings::new(view);
@@ -91,14 +111,20 @@ pub(super) fn compile_block_overlay(
         .collect::<HashSet<_>>();
     let mut builder = Builder {
         catalog: TextureCatalog::new(view, vanilla_keys),
+        base_assets,
+        vanilla_carried: Vec::new(),
+        terrain_materials: HashMap::new(),
         geometries: geometry_catalog(view, &wanted),
         overlay: BlockOverlay::default(),
+        fallback: vanilla_keys
+            .zip(base_assets)
+            .map(|(keys, base)| assets::VanillaFallback::new(keys, base.materials())),
         sources: Vec::new(),
         source_bytes: 0,
         tile_size: MIN_TILE,
         texture_policy: device_policy(),
         max_layers: (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS),
-        textures: HashMap::new(),
+        slots: TextureSlots::default(),
         materials: HashMap::new(),
         visuals: HashMap::new(),
         gaps: OverlayGaps {
@@ -156,8 +182,13 @@ pub(super) fn compile_block_overlay(
     if let Some(keys) = vanilla_keys {
         let _zone = bevy::log::info_span!("pack.blocks.vanilla_overrides").entered();
         builder.override_vanilla_materials(keys);
+        builder.override_vanilla_bindings(keys, &legacy);
     }
-    if blocks.blocks.is_empty() && builder.overlay.material_overrides.is_empty() {
+    if blocks.blocks.is_empty()
+        && builder.overlay.material_overrides.is_empty()
+        && builder.overlay.face_overrides.is_empty()
+        && builder.vanilla_carried.is_empty()
+    {
         builder.catalog.emit_diagnostics();
         return None;
     }
@@ -174,52 +205,56 @@ enum Source {
 
 #[derive(Clone)]
 struct TextureSlot {
+    page: u32,
     layer: u32,
     animation: u32,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum TextureRoute {
+    Catalog {
+        key: String,
+        variant: u32,
+        choice: u32,
+    },
+    Path {
+        key: String,
+        variant: u32,
+        path: String,
+        choice: u32,
+    },
+}
+
+impl TextureRoute {
+    /// The catalog key used for diagnostics and inherited animation metadata.
+    fn key(&self) -> &str {
+        match self {
+            Self::Catalog { key, .. } | Self::Path { key, .. } => key,
+        }
+    }
+}
+
 struct Builder<'a> {
     catalog: TextureCatalog<'a>,
+    base_assets: Option<&'a assets::RuntimeAssets>,
+    vanilla_carried: Vec<CarriedBlock>,
+    terrain_materials: HashMap<(String, u32, u32), u32>,
     geometries: HashMap<String, Geometry>,
     overlay: BlockOverlay,
+    /// Base-carrier textures for vanilla keys the server stack does not ship.
+    fallback: Option<assets::VanillaFallback<'a>>,
     sources: Vec<Source>,
     source_bytes: usize,
     tile_size: u32,
     texture_policy: TexturePolicy,
     max_layers: usize,
-    textures: HashMap<String, Option<TextureSlot>>,
+    slots: TextureSlots,
     materials: HashMap<(String, u32), u32>,
     visuals: HashMap<String, BlockVisual>,
     gaps: OverlayGaps,
 }
 
 impl Builder<'_> {
-    /// Repoints every base material whose terrain key the pack redefines.
-    fn override_vanilla_materials(&mut self, keys: &MaterialKeys) {
-        let mut candidates = self
-            .catalog
-            .terrain_keys()
-            .filter(|key| !keys.materials(key).is_empty())
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        candidates.sort_unstable();
-        let mut claimed = HashSet::new();
-        for key in candidates {
-            let Some(slot) = self.texture_slot(&key) else {
-                continue;
-            };
-            for &material in keys.materials(&key) {
-                if material != DIAGNOSTIC_MATERIAL && claimed.insert(material) {
-                    self.overlay.material_overrides.push(MaterialOverride {
-                        material,
-                        texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
-                        animation: slot.animation,
-                    });
-                }
-            }
-        }
-    }
-
     fn push_state(&mut self, state: &StateVisual) {
         let light = state_light(&state.components);
         let visual = self.visual(state);
@@ -229,11 +264,14 @@ impl Builder<'_> {
                 None | Some(FULL_BLOCK | FULL_BLOCK_V1)
             )
         {
+            let checkpoint = self.texture_checkpoint();
             let carried = self.cube(&state.components);
             if carried.support == VisualSupport::Exact {
                 self.overlay
                     .carried_cube_faces
                     .push((self.overlay.visuals.len() as u32, carried.faces));
+            } else {
+                self.rollback_textures(checkpoint);
             }
         }
         self.overlay.visuals.push(visual);
@@ -246,6 +284,7 @@ impl Builder<'_> {
         if let Some(visual) = self.visuals.get(&key) {
             return *visual;
         }
+        let checkpoint = self.texture_checkpoint();
         let visual = match components.geometry.as_deref() {
             None | Some(FULL_BLOCK | FULL_BLOCK_V1) if components.random_offset.is_none() => {
                 self.cube(components)
@@ -261,6 +300,9 @@ impl Builder<'_> {
                 }
             },
         };
+        if visual.kind == VisualKind::Diagnostic {
+            self.rollback_textures(checkpoint);
+        }
         self.visuals.insert(key, visual);
         visual
     }
@@ -460,12 +502,15 @@ impl Builder<'_> {
         if let Some(&material) = self.materials.get(&(texture.clone(), flags)) {
             return (material, alpha_flags, two_sided);
         }
+        if !self.can_admit_materials(1) {
+            return (DIAGNOSTIC_MATERIAL, 0, false);
+        }
         let Some(slot) = self.texture_slot(&texture) else {
             return (DIAGNOSTIC_MATERIAL, 0, false);
         };
         let material = self.overlay.materials.len() as u32;
         self.overlay.materials.push(Material {
-            texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
+            texture: TextureRef::new(slot.page, slot.layer).expect("bounded layer"),
             flags,
             animation: slot.animation,
             ..assets::Material::unvaried()
@@ -474,109 +519,65 @@ impl Builder<'_> {
         (material, alpha_flags, two_sided)
     }
 
+    /// Resolves a custom block's default choice, borrowing only unchanged base routes.
     fn texture_slot(&mut self, key: &str) -> Option<TextureSlot> {
-        if let Some(slot) = self.textures.get(key) {
-            return slot.clone();
-        }
-        let slot = self.load_texture(key);
-        self.textures.insert(key.to_owned(), slot.clone());
-        slot
+        let route = TextureRoute::Catalog {
+            key: key.to_owned(),
+            variant: 0,
+            choice: 0,
+        };
+        self.route_slot(route.clone()).or_else(|| {
+            // A changed catalog can name different pixels, tint, or UV sampling.
+            if self.catalog.redefined(key, 0) {
+                return None;
+            }
+            let storage_key = self.catalog.storage_key(&route, None)?;
+            if !matches!(
+                self.slots.frames(&storage_key, false),
+                Some(Err(texture_admission::FrameFailure::Missing))
+            ) {
+                return None;
+            }
+            let reference = self.fallback.as_ref()?.texture(key, storage_key.tint)?;
+            Some(TextureSlot {
+                page: reference.page(),
+                layer: reference.layer(),
+                animation: NO_ANIMATION,
+            })
+        })
     }
 
-    fn load_texture(&mut self, key: &str) -> Option<TextureSlot> {
-        let available = self.max_layers.saturating_sub(self.sources.len());
-        if available == 0 {
-            // A full array rejects every later route, so name it rather than
-            // leaving those textures indistinguishable from unusable pack data.
-            self.gaps.saturated_textures += 1;
-            self.catalog.report_full(key);
-            return None;
+    /// Reuses raster-equivalent pack requests before admitting more pixels.
+    fn route_slot(&mut self, route: TextureRoute) -> Option<TextureSlot> {
+        self.request_slot(route, None)
+    }
+
+    /// Allows a static carrier donor while reusing any equivalent admitted pack raster.
+    fn carrier_slot(&mut self, route: TextureRoute, keys: &MaterialKeys) -> Option<TextureSlot> {
+        self.request_slot(route, Some(keys))
+    }
+
+    /// Uses one raster identity for caching, independently of the caller's route representation.
+    fn request_slot(
+        &mut self,
+        route: TextureRoute,
+        keys: Option<&MaterialKeys>,
+    ) -> Option<TextureSlot> {
+        let identity = self.catalog.identity(&route)?;
+        if let Some(slot) = self.slots.get(&identity, keys.is_some()) {
+            return slot;
         }
-        let mut texture = self.catalog.decode(key)?;
-        let grid = self.catalog.grid(key);
-        if self.catalog.flipbook(key).is_none() {
-            admit_static_rectangle(&mut texture);
-        }
-        let frame_height =
-            if texture.height > texture.width && texture.height.is_multiple_of(texture.width) {
-                texture.width
-            } else {
-                texture.height
-            };
-        let tile = texture
-            .width
-            .max(frame_height)
-            .checked_next_power_of_two()?
-            .max(self.tile_size);
-        let Some(layer_bytes) = self.texture_policy.terrain_bytes(tile, 1) else {
-            self.catalog.report_budget(key);
-            return None;
-        };
-        let frame_bytes = self
-            .texture_policy
-            .source_bytes(texture.width, frame_height, false)?;
-        let available = available
-            .min((MAX_SUBSCRIBER_BYTES / layer_bytes).saturating_sub(self.sources.len()))
-            .min(MAX_SUBSCRIBER_BYTES.saturating_sub(self.source_bytes) / frame_bytes);
-        if available == 0 {
-            self.catalog.report_budget(key);
-            return None;
-        }
-        // Bound full-resolution frame copies before allocating them.
-        let frames = match self.catalog.flipbook(key) {
-            Some(flipbook) => flipbook_frames(
-                &texture,
-                flipbook,
-                available.min(256),
-                self.texture_policy.max_side(),
-            ),
-            None => vec![texture],
-        };
-        if frames
-            .iter()
-            .any(|frame| frame.width >> grid == 0 || frame.height >> grid == 0)
-        {
-            return None;
-        }
-        let added_bytes: usize = frames.iter().map(|frame| frame.rgba8.len()).sum();
-        if frames.is_empty() || self.source_bytes + added_bytes > MAX_SUBSCRIBER_BYTES {
-            return None;
-        }
-        self.tile_size = tile;
-        self.source_bytes += added_bytes;
-        let first = self.sources.len() as u32;
-        let frame_count = frames.len() as u32;
-        self.sources.extend(frames.into_iter().map(|frame| {
-            if grid == 0 {
-                Source::Image(frame)
-            } else {
-                Source::GridImage(frame, grid)
-            }
-        }));
-        let animation = match self.catalog.flipbook(key) {
-            Some(flipbook) if frame_count > 1 => {
-                let frame_start = self.overlay.animation_frames.len() as u32;
-                for layer in first..first + frame_count {
-                    self.overlay
-                        .animation_frames
-                        .push(TextureRef::new(1, layer).expect("bounded layer"));
-                }
-                self.overlay.animations.push(Animation {
-                    frame_start,
-                    frame_count,
-                    ticks_per_frame: flipbook.ticks_per_frame,
-                    atlas_index: 0,
-                    atlas_tile_variant: 0,
-                    replicate: 1,
-                    flags: u32::from(flipbook.blend) * assets::ANIMATION_FLAG_BLEND,
-                });
-                self.overlay.animations.len() as u32 - 1
-            }
-            _ => NO_ANIMATION,
-        };
-        Some(TextureSlot {
-            layer: first,
-            animation,
+        let loaded = self.load_texture(&route, keys);
+        self.slots.insert(identity, loaded, keys.is_some())
+    }
+
+    /// Resolves a material's complete atlas destination using the same route admission.
+    #[cfg(test)]
+    fn texture_slot_for(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
+        self.route_slot(TextureRoute::Catalog {
+            key: key.to_owned(),
+            variant: selector.0,
+            choice: selector.1,
         })
     }
 
@@ -652,6 +653,7 @@ impl Builder<'_> {
         Some(CompiledBlockOverlay {
             overlay: self.overlay,
             gaps: self.gaps,
+            vanilla_carried: self.vanilla_carried,
         })
     }
 }

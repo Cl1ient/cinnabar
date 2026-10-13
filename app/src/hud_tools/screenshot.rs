@@ -34,8 +34,19 @@ type CaptureConsumer = Box<dyn FnOnce(&Image) + Send + Sync>;
 pub(crate) struct FrameCapture(Vec<CaptureConsumer>);
 
 impl FrameCapture {
+    /// Queues a consumer of this frame's shared readback.
     pub(crate) fn request(&mut self, consumer: impl FnOnce(&Image) + Send + Sync + 'static) {
         self.0.push(Box::new(consumer));
+    }
+
+    /// Runs image conversion and encoding on the existing I/O task pool after readback.
+    pub(crate) fn request_encoded(&mut self, consumer: impl FnOnce(Image) + Send + Sync + 'static) {
+        self.request(move |image| {
+            let image = image.clone();
+            bevy::tasks::IoTaskPool::get()
+                .spawn(async move { consumer(image) })
+                .detach();
+        });
     }
 }
 
@@ -140,11 +151,8 @@ fn capture_from_env(
     }
     let (sender, receiver) = crossbeam_channel::bounded(1);
     let path = capture.path.clone();
-    frames.request(move |image| {
-        let image = image.clone();
-        std::thread::spawn(move || {
-            let _ = sender.send(write_png(image, &path));
-        });
+    frames.request_encoded(move |image| {
+        let _ = sender.send(write_png(image, &path));
     });
     capture.done = Some(receiver);
 }
@@ -174,11 +182,8 @@ fn capture_on_key(
         }
     };
     let sender = channel.sender.clone();
-    frames.request(move |image| {
-        let image = image.clone();
-        std::thread::spawn(move || {
-            let _ = sender.send(write_reserved_png(image, &path, file));
-        });
+    frames.request_encoded(move |image| {
+        let _ = sender.send(write_reserved_png(image, &path, file));
     });
 }
 
@@ -273,6 +278,34 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn encoding_consumers_run_outside_the_readback_observer() {
+        bevy::tasks::IoTaskPool::get_or_init(bevy::tasks::TaskPool::new);
+        let observer_thread = std::thread::current().id();
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        let mut capture = FrameCapture::default();
+        capture.request_encoded(move |image| {
+            let pixels = image.try_into_dynamic().unwrap().to_rgb8();
+            sender
+                .send((std::thread::current().id(), pixels.dimensions()))
+                .unwrap();
+        });
+        let frame = Image::from_dynamic(
+            image::DynamicImage::ImageRgb8(image::RgbImage::new(32, 18)),
+            true,
+            Default::default(),
+        );
+        capture.0.pop().unwrap()(&frame);
+        let mut result = None;
+        test_time::eventually("off-thread image encoding", || {
+            result = receiver.try_recv().ok();
+            result.is_some()
+        });
+        let (encoding_thread, dimensions) = result.unwrap();
+        assert_ne!(encoding_thread, observer_thread);
+        assert_eq!(dimensions, (32, 18));
+    }
 
     #[test]
     fn review_failed_automated_capture_exits_with_failure() {

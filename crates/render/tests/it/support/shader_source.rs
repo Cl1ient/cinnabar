@@ -71,8 +71,10 @@ fn alpha_comparison(
         naga::Expression::Load { pointer } => &function.expressions[pointer],
         _ => &function.expressions[left],
     };
-    if op == naga::BinaryOperator::Less
-        && matches!(alpha, naga::Expression::AccessIndex { index: 3, .. })
+    if matches!(
+        op,
+        naga::BinaryOperator::Less | naga::BinaryOperator::LessEqual
+    ) && matches!(alpha, naga::Expression::AccessIndex { index: 3, .. })
     {
         let expression = match function.expressions[right] {
             naga::Expression::Constant(constant) => {

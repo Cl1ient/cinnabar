@@ -233,7 +233,7 @@ fn fields(out: &mut String, fields: &[FieldDecl]) {
 
 fn field(out: &mut String, decl: &FieldDecl) {
     let _ = match decl {
-        FieldDecl::Bool => write!(out, "{SDK}::Field::Bool"),
+        FieldDecl::Bool => write!(out, "{SDK}::Field::Bool {{}}"),
         FieldDecl::Integer { min, max } => {
             write!(out, "{SDK}::Field::Integer {{ min: {min}, max: {max} }}")
         }

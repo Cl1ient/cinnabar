@@ -108,6 +108,7 @@ impl ActorStore {
             local_server_swings: 0,
             pending_local_damage: None,
             local_health_skips: 0,
+            pending_local_death: Vec::new(),
             local_player_spawned: false,
             synthetic_local_uuid: None,
             synthetic_local_skin: None,
@@ -262,6 +263,7 @@ impl ActorStore {
         self.bind_actor_seat(&actor);
         self.actors.insert(runtime_id, actor);
         self.apply_pending_local_health(runtime_id);
+        self.apply_pending_local_death(runtime_id);
         if let Some(actor) = self.actors.get(&runtime_id) {
             self.animation
                 .insert(self.session_id, self.dimension, actor);
@@ -336,6 +338,7 @@ impl ActorStore {
     pub(crate) fn begin_session(&mut self, session_id: u64, dimension: i32) {
         self.session_id = session_id;
         self.pending_local_health = None;
+        self.pending_local_death.clear();
         self.pending_local_damage = None;
         self.local_health_skips = 0;
         self.local_player_spawned = false;
@@ -382,6 +385,7 @@ impl ActorStore {
         self.dimension = dimension;
         self.local_server_swings = 0;
         self.local_flying = false;
+        self.retain_local_death();
         self.pending_local_health = self
             .remote_state_excluded_runtime_id
             .and_then(|runtime_id| self.actors.get(&runtime_id))
@@ -566,6 +570,9 @@ impl ActorStore {
             }
             ActorEvent::Metadata(update) => {
                 let Some(actor) = self.actors.get_mut(&update.runtime_id) else {
+                    if self.remote_state_excluded_runtime_id == Some(update.runtime_id) {
+                        self.merge_pending_local_death(&update.metadata);
+                    }
                     return ActorApplyResult::MissingActor;
                 };
                 let incompatible = update.metadata.iter().any(|metadata| {
@@ -762,6 +769,7 @@ impl ActorStore {
             } else {
                 self.apply_pending_local_health(runtime_id);
             }
+            self.apply_pending_local_death(runtime_id);
         }
         self.unique_to_runtime.insert(unique_id, runtime_id);
         self.adopt_spawned_unique_id(runtime_id);

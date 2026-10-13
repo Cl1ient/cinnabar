@@ -188,6 +188,17 @@ impl Manager {
         self.inner.store.list()
     }
 
+    /// World `id`'s saved menu thumbnail, if one was captured.
+    #[must_use]
+    pub fn thumbnail(&self, id: &str) -> Option<Vec<u8>> {
+        self.inner.store.thumbnail(id)
+    }
+
+    /// Saves `image` as world `id`'s menu thumbnail.
+    pub fn save_thumbnail(&self, id: &str, image: &[u8]) -> Result<(), WorldError> {
+        self.inner.store.save_thumbnail(id, image)
+    }
+
     /// Saves a new world; a BDS world is refused where BDS cannot run. Unless Dragonfly was asked
     /// for, it first waits out a runtime detection in flight, so no world is saved against a guess.
     pub fn create(&self, world: &NewWorld) -> Result<World, WorldError> {

@@ -12,6 +12,13 @@ use std::{
 use wgpu::util::DeviceExt;
 
 pub const SNAPSHOT_SIDE: u32 = 256;
+/// Color retained by pixels where a fixture fragment is discarded.
+pub const CLEAR_COLOR: wgpu::Color = wgpu::Color {
+    r: 0.12,
+    g: 0.18,
+    b: 0.25,
+    a: 1.0,
+};
 
 pub struct Gpu {
     pub device: wgpu::Device,
@@ -431,12 +438,7 @@ impl Gpu {
                     resolve_target: multisampled_view.as_ref().map(|_| &view),
                     ops: wgpu::Operations {
                         load: if index == 0 {
-                            wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.12,
-                                g: 0.18,
-                                b: 0.25,
-                                a: 1.0,
-                            })
+                            wgpu::LoadOp::Clear(CLEAR_COLOR)
                         } else {
                             wgpu::LoadOp::Load
                         },

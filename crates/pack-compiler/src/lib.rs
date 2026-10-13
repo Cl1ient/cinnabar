@@ -82,7 +82,7 @@ pub use hud::{CompiledHudCarrier, HudCompileError, HudCompileReport, compile_hud
 pub use hud_extras::compile_hud_extras_to_file;
 pub use icon::{
     CompiledIconCarrier, IconCompileReport, compile_icon_assets, compile_icon_assets_with_blocks,
-    overlay_block_icon,
+    overlay_block_icon, overlay_cube_icon,
 };
 pub use lang::{
     CompiledLangCarrier, LangCompileError, LangCompileReport, compile_lang_assets,
@@ -90,8 +90,8 @@ pub use lang::{
 };
 pub use oreui_icons::{compile_oreui_icons_to_file, oreui_icon_sources};
 pub use pack::{
-    BlockTextureMap, DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES, MAX_FLIPBOOKS,
-    PackSources, TerrainTextureMap, TextureKey, read_pack, resolve_texture_key,
+    BlockTextureMap, MAX_FLIPBOOKS, PackSources, TerrainTextureMap, TextureKey, read_pack,
+    resolve_texture_key,
 };
 pub use particle::{
     CompiledParticleCarrier, ParticleCompileReport, compile_particle_assets,

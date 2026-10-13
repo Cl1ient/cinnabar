@@ -309,6 +309,12 @@ pub struct SetTimeEvent {
     pub time: i32,
 }
 
+/// The world spawn moved: the block compasses point at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorldSpawnEvent {
+    pub position: [i32; 3],
+}
+
 /// One runtime update to the world's daylight-cycle switch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DaylightCycleUpdateEvent {
@@ -496,6 +502,7 @@ pub enum WorldEvent {
     /// A server probe echoed only after preceding world controls are applied.
     NetworkStackLatency(u64),
     SetTime(SetTimeEvent),
+    WorldSpawn(WorldSpawnEvent),
     WorldClocks(Vec<super::WorldClockUpdateEvent>),
     GameRules(GameRulesEvent),
     Weather(WeatherUpdateEvent),

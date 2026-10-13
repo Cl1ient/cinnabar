@@ -11,7 +11,7 @@ use semantic_input::{Action, PerspectiveMode};
 
 use super::{
     CameraSettingsAuthority, FlyCamera,
-    bob::{HandSwayState, ViewEffect, WalkBobState, walk_bob_effect},
+    bob::{ViewEffect, WalkBobState, walk_bob_effect},
     fov::CameraFovInputs,
     hurt::CameraHurtState,
     java::{JavaCameraState, JavaCameraTick, java_hurt_roll},
@@ -113,7 +113,6 @@ pub fn advance_presentation_state(
     physics: Option<&dyn crate::observations::PhysicsObservation>,
     ui: Option<&client_ui::ui_runtime::UiRuntime>,
     mut bob: ResMut<WalkBobState>,
-    mut sway: ResMut<HandSwayState>,
     mut hurt: ResMut<CameraHurtState>,
     mut java: ResMut<JavaCameraState>,
     mut legacy: ResMut<super::legacy::LegacyCameraMotion>,
@@ -125,7 +124,6 @@ pub fn advance_presentation_state(
         .is_some_and(|state| state.on_ground);
     hurt.advance(dt);
     let (yaw, pitch, _) = view.rotation().to_euler(EulerRot::YXZ);
-    sway.advance(pitch, yaw, dt);
     hand.eye_height_adjustment = 0.0;
     let look = [-pitch.to_degrees(), -yaw.to_degrees()];
     let alive = client_world
@@ -163,6 +161,9 @@ pub fn advance_presentation_state(
             .map(|state| state.tick),
         view.camera_reanchor_epoch(),
     );
+    if reanchored {
+        *java = JavaCameraState::default();
+    }
     if let Some(physics) = physics {
         if reanchored && let Some(state) = physics.state() {
             legacy.state.reset_at(
@@ -214,6 +215,13 @@ pub fn advance_presentation_state(
     } else {
         *java = JavaCameraState::default();
     }
+    // Java hand sway applies to both combat profiles and animation modes.
+    (hand.sway_pitch_radians, hand.sway_yaw_radians) =
+        if physics.and_then(|physics| physics.state()).is_some() {
+            java.sway(physics.map_or(1.0, |physics| physics.tick_alpha()), look)
+        } else {
+            (0.0, 0.0)
+        };
     if settings.feel().java_animations {
         let alpha = physics.map_or(1.0, |physics| physics.tick_alpha());
         if physics.is_some_and(|physics| {
@@ -239,22 +247,14 @@ pub fn advance_presentation_state(
                 Quat::from_mat4(&java_hurt_roll(hurt.progress())),
                 settings.feel().damage_bob,
             ));
-        (hand.sway_pitch_radians, hand.sway_yaw_radians) = java.sway(alpha, look);
         if render_api::DEFAULT_COMBAT_VISUALS == render_api::CombatVisuals::Modern {
             return;
         }
     }
     if render_api::DEFAULT_COMBAT_VISUALS == render_api::CombatVisuals::Legacy112 {
-        // Java keeps poses, sneak eye height and sway; legacy combat owns bob and hurt.
+        // Java keeps poses and sneak eye height; legacy combat owns bob and hurt.
         hand.bob = ViewEffect::NONE;
         hand.hurt = Mat4::IDENTITY;
-        if !settings.feel().java_animations {
-            (hand.sway_pitch_radians, hand.sway_yaw_radians) = if settings.feel().view_bobbing {
-                sway.sway_radians()
-            } else {
-                (0.0, 0.0)
-            };
-        }
         return;
     }
     hand.bob = if settings.feel().view_bobbing {
@@ -266,14 +266,6 @@ pub fn advance_presentation_state(
         Quat::from_mat4(&hurt.view_matrix(yaw)),
         settings.feel().damage_bob,
     ));
-    // Vanilla sways the hand only while view bobbing is on.
-    let (sway_pitch, sway_yaw) = if settings.feel().view_bobbing {
-        sway.sway_radians()
-    } else {
-        (0.0, 0.0)
-    };
-    hand.sway_pitch_radians = sway_pitch;
-    hand.sway_yaw_radians = sway_yaw;
 }
 
 fn approach(current: f32, target: f32, step: f32) -> f32 {

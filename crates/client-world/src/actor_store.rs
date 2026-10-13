@@ -49,6 +49,8 @@ const PLAYER_FLAGS_SLEEPING: u8 = 1 << 1;
 pub(crate) const ACTOR_FLAG_SLEEPING: u32 = 76;
 const ACTOR_FLAG_SNEAKING: u32 = 1;
 const ACTOR_FLAG_INVISIBLE: u32 = 5;
+/// Primary actor flag that permits name-tag presentation.
+pub const ACTOR_FLAG_SHOW_NAME: u32 = 14;
 const ACTOR_FLAG_SWIMMING: u32 = 57;
 const ACTOR_FLAG_USING_ITEM: u32 = 4;
 const ACTOR_FLAG_SPRINTING: u32 = 3;
@@ -292,6 +294,8 @@ impl ActorSnapshot {
             dragon_animation: None,
             hitboxes: None,
         };
+        // Predicted flags must retain the visible-name default until the server replaces them.
+        snapshot.set_flag(ACTOR_FLAG_SHOW_NAME, true);
         snapshot.apply_local_flags(feed);
         snapshot
     }
@@ -823,6 +827,9 @@ pub(crate) struct ActorStore {
     local_server_swings: u8,
     pending_local_damage: Option<local_health::PendingLocalDamage>,
     local_health_skips: u64,
+    /// The local player's last-death data held while its actor is absent (a dimension change),
+    /// since servers need not resend it.
+    pending_local_death: Vec<protocol::ActorMetadata>,
     /// Server PlayerSpawn has enabled local health-drop animations in this session.
     local_player_spawned: bool,
     /// Key of the synthetic local-player profile, present only while the player list carries no
@@ -886,6 +893,7 @@ mod entities;
 mod fire;
 mod hitbox;
 mod hurt;
+mod last_death;
 mod local_health;
 pub use local_health::DEFAULT_PLAYER_HEALTH;
 mod lifecycle;

@@ -10,6 +10,16 @@ pub(super) struct PendingSubChunk {
 
 pub(super) type PendingSubChunkColumn = BTreeMap<i32, PendingSubChunk>;
 
+/// A sub-chunk whose request was abandoned, unanswered or refused. It is asked for again once
+/// `due` passes, for as long as its column stays in view, so a slow server never leaves a hole.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct SubChunkRecovery {
+    /// When to ask again; `None` until the next recovery pass times the latest abandonment.
+    pub(super) due: Option<Instant>,
+    /// How many times it was abandoned, which spaces the next request.
+    pub(super) rounds: u8,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct CorrelatedSubChunkAttempts {
     pub(super) pending_transport_attempts: u8,

@@ -34,14 +34,17 @@ impl TexturePolicy {
         self.max_side
     }
 
-    /// Checks source area before decoding; vertical strips upload as square frames.
-    pub fn source_bytes(self, width: u32, height: u32, vertical_strip: bool) -> Option<usize> {
-        let strip = vertical_strip
-            && width > 0
-            && height > width
-            && height <= u32::from(u16::MAX)
-            && height.is_multiple_of(width);
-        if width > self.max_side || (height > self.max_side && !strip) {
+    /// Checks source area before decoding; row and column strips upload as square frames.
+    pub fn source_bytes(self, width: u32, height: u32, allow_strip: bool) -> Option<usize> {
+        let side = width.min(height);
+        let extent = width.max(height);
+        let strip = allow_strip
+            && side > 0
+            && side < extent
+            && side <= self.max_side
+            && extent <= u32::from(u16::MAX)
+            && extent.is_multiple_of(side);
+        if (width > self.max_side || height > self.max_side) && !strip {
             return None;
         }
         rgba8_bytes(width, height).filter(|&bytes| bytes <= MAX_IMAGE_BYTES)

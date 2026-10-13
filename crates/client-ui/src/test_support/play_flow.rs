@@ -118,6 +118,7 @@ pub fn fixture_view(dir: &std::path::Path) -> MenuView {
         world_type: launcher::local_worlds::NORMAL_WORLD_LABEL.to_owned(),
         date: "9/30/2026".to_owned(),
         size: "12 MB".to_owned(),
+        thumbnail: None,
     }];
     view.servers = vec![
         SavedServer {

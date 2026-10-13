@@ -20,6 +20,24 @@ fn strips_are_bounded_by_frame_dimensions_and_checked_area() {
 }
 
 #[test]
+fn horizontal_strips_obey_frame_extent_area_and_length_bounds() {
+    let policy = TexturePolicy::for_device(64);
+    assert_eq!(policy.source_bytes(8192, 64, true), Some(8192 * 64 * 4));
+    assert_eq!(
+        policy.source_bytes(8192, 64, true),
+        policy.source_bytes(64, 8192, true)
+    );
+    assert_eq!(policy.source_bytes(8192, 64, false), None);
+    assert_eq!(policy.source_bytes(8193, 64, true), None);
+    assert_eq!(policy.source_bytes(8192, 65, true), None);
+    assert_eq!(policy.source_bytes(u32::from(u16::MAX) + 1, 64, true), None);
+    assert_eq!(
+        TexturePolicy::for_device(MAX_TEXTURE_SIDE).source_bytes(4096, 2048, true),
+        None
+    );
+}
+
+#[test]
 fn terrain_budget_counts_complete_mips_and_device_dimensions() {
     let policy = TexturePolicy::for_device(MAX_TEXTURE_SIDE);
     let bytes = policy.terrain_bytes(512, 2).unwrap();

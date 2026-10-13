@@ -636,7 +636,10 @@ pub(crate) fn compiled_compound_tails(
     Ok(tails)
 }
 
-fn compiled_stair_bases(templates: &[crate::ModelTemplate]) -> Result<Vec<usize>, AssetError> {
+/// Validates stair topology groups and returns each group's first template.
+pub(crate) fn compiled_stair_bases(
+    templates: &[crate::ModelTemplate],
+) -> Result<Vec<usize>, AssetError> {
     let mut bases = Vec::new();
     let mut index = 0;
     while index < templates.len() {
@@ -659,7 +662,8 @@ fn compiled_stair_bases(templates: &[crate::ModelTemplate]) -> Result<Vec<usize>
     Ok(bases)
 }
 
-fn compiled_connected_bases(
+/// Validates connected topology groups and returns their first templates and flags.
+pub(crate) fn compiled_connected_bases(
     templates: &[crate::ModelTemplate],
 ) -> Result<Vec<(usize, u32)>, AssetError> {
     let mut bases = Vec::new();

@@ -45,6 +45,7 @@ impl WorldAuthority {
                     });
                 }
             }
+            WorldEvent::WorldSpawn(update) => self.world_spawn = update.position,
             WorldEvent::SetTime(update) => {
                 let sequence = sequence.expect("sequenced SetTime commits through submit");
                 self.push_committed_control(CommittedControlEvent::SetTime { sequence, update });

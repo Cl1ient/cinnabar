@@ -8,7 +8,7 @@ struct Record {
     uv: vec4<f32>,
     color: vec4<f32>,
     line_lift: f32,
-    padding0: u32,
+    depth_tested: u32,
     padding1: u32,
     padding2: u32,
 }
@@ -20,6 +20,7 @@ struct Record {
 
 // Injected from nametag.rs: font-pixel scale has one shared value.
 const BLOCKS_PER_FONT_PIXEL: f32 = NAMETAG_SCALE_VALUE;
+const ALPHA_CUTOFF: f32 = NAMETAG_ALPHA_CUTOFF_VALUE;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -43,20 +44,12 @@ fn corner(index: u32) -> vec2<f32> {
 fn nametag_vertex(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     let record = records[vertex_index / 6u];
     let at = corner(vertex_index % 6u);
-    // Rotation is computed from the original anchor, before the multiline Y translation.
-    let direction = view.world_position - record.anchor;
-    let horizontal = length(direction.xz);
-    // A vertical direction has no yaw; avoid atan2(0, 0) on the GPU.
-    var yaw = 0.0;
-    if (horizontal != 0.0) {
-        yaw = -atan2(direction.x, -direction.z);
-    }
-    let pitch = atan2(direction.y, horizontal);
-    let right = vec3(-cos(yaw), 0.0, sin(yaw));
-    let down = vec3(-sin(yaw) * sin(pitch), -cos(pitch), -cos(yaw) * sin(pitch));
+    // Every tag shares the camera rotation, including at the edges of the view.
+    let right = normalize(view.world_from_view[0].xyz);
+    let up = normalize(view.world_from_view[1].xyz);
     let local = mix(record.rect.xy, record.rect.zw, at);
     let world = record.anchor + vec3(0.0, record.line_lift, 0.0)
-        + (right * local.x + down * local.y) * BLOCKS_PER_FONT_PIXEL;
+        + (right * local.x - up * local.y) * BLOCKS_PER_FONT_PIXEL;
     var out: VertexOutput;
     out.position = view.clip_from_world * vec4(world, 1.0);
     out.uv = mix(record.uv.xy, record.uv.zw, at);
@@ -70,15 +63,13 @@ fn nametag_fragment(input: VertexOutput) -> @location(0) vec4<f32> {
     var color = input.color;
     var texel = textureSample(atlas, atlas_sampler, input.uv);
     if (input.textured != 0u) {
-        // Test the sampled glyph, before multiplying the native 0.125 sneak opacity.
-        @if(NAMETAG_ALPHA_TEST)
-        if (texel.a < 0.5) { discard; }
         @if(NAMETAG_GAMMA_BLEND)
         texel = tint_to_gamma(texel);
+        // Test atlas coverage before text opacity and cosmetic fading.
+        if (texel.a <= ALPHA_CUTOFF) {
+            discard;
+        }
         color = color * texel;
-    }
-    if (color.a <= 0.0) {
-        discard;
     }
     return color;
 }

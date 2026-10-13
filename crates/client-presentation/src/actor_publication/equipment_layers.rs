@@ -1,29 +1,27 @@
 //! Equipment publication keeps authored worn poses beneath the selected player body.
 
 use super::*;
+use crate::presentation::actors::ActorPresentationBatch;
 use crate::presentation::equipment::remote_input;
-use crate::presentation::{actors::ActorPresentationBatch, equipment::ActorEquipmentInput};
 
-/// Adds held and worn layers before cape artwork can replace a worn wing texture.
+/// Adds held and worn layers using the local actor identity and inventory facts.
+/// Cape artwork is applied afterward and may replace a worn wing texture.
 pub(super) fn attach(
     batch: &mut ActorPresentationBatch,
     equipment: &mut EquipmentRuntime,
     stream: &WorldStream,
-    local_runtime_id: u64,
-    input: &ActorEquipmentInput,
-    java_posed: &[java::Posed],
-    combat_visuals: render_api::CombatVisuals,
+    poses: &super::layers::LayerPoses<'_>,
     frame: (f32, f32, Option<&render_scene::UiGlintSettings>),
 ) {
     let (partial_tick, delta_seconds, glint_settings) = frame;
     crate::presentation::actors::attach_layers(batch, equipment, |equipment, body| {
         let runtime_id = body.input.identity.runtime_id;
-        let mut input = if runtime_id == local_runtime_id {
-            local_equipment(stream, runtime_id, input)
+        let mut input = if runtime_id == poses.local_runtime_id {
+            local_equipment(stream, runtime_id, poses.local_equipment)
         } else {
             remote_input(stream, runtime_id)
         };
-        if java::posed(java_posed, runtime_id).is_some() {
+        if java::posed(poses.java_posed, runtime_id).is_some() {
             let using = stream
                 .authority()
                 .actor(runtime_id)
@@ -37,7 +35,7 @@ pub(super) fn attach(
         let layers = equipment.layers_for_profile(
             body,
             &input,
-            combat_visuals,
+            poses.combat_visuals,
             animation.as_ref().map(|(owner, rig)| {
                 crate::presentation::equipment::EquipmentAnimation {
                     owner,
@@ -47,11 +45,8 @@ pub(super) fn attach(
                 }
             }),
         );
-        if let Some(settings) = glint_settings {
-            for layer in layers.iter_mut() {
-                layer.submission.material.glint.strength = settings.strength;
-                layer.submission.material.glint.speed = settings.speed;
-            }
+        for layer in layers.iter_mut() {
+            animate_glint(&mut layer.submission, partial_tick, glint_settings);
         }
         layers
     });
@@ -68,5 +63,23 @@ pub(super) fn local_equipment(
         sneaking: actor.is_some_and(|actor| actor.is_sneaking()),
         sleeping: actor.is_some_and(|actor| actor.is_sleeping()),
         ..inventory.clone()
+    }
+}
+
+/// Applies the glint accessibility settings and starts held-item glint scrolling at the
+/// draw's interpolated tick; worn equipment keeps the clock its own layer set.
+pub(super) fn animate_glint(
+    submission: &mut render_model::ActorRigSubmission,
+    partial_tick: f32,
+    settings: Option<&render_scene::UiGlintSettings>,
+) {
+    let glint = &mut submission.material.glint;
+    if let Some(settings) = settings {
+        glint.strength = settings.strength;
+        glint.speed = settings.speed;
+    }
+    if glint.texture == render_model::GlintTexture::Item {
+        glint.time_seconds = (submission.input.completed_tick as f32 + partial_tick)
+            * simulation_clock::TICK_DURATION.as_secs_f32();
     }
 }

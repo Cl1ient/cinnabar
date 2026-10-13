@@ -38,6 +38,7 @@ pub(super) fn descriptor_for(
         || visuals::shelf::is_record(record)
         || visuals::sea_pickle::is_record(record)
         || visuals::brewing_stand::is_record(record)
+        || visuals::campfire::is_record(record)
         || visuals::grindstone::is_record(record)
         || visuals::tripwire_hook::is_record(record)
         || visuals::end_portal_frame::is_record(record)
@@ -79,6 +80,10 @@ pub(super) fn descriptor_for(
     } else if record.flags.contains(BlockFlags::LEAF_MODEL) {
         flags |= MATERIAL_FLAG_ALPHA_CUTOUT;
         flags |= leaf_tint_flags(&record.name);
+    }
+    if is_torch(record) {
+        // Native torch tessellation lights the whole torch from its own cell in plain white.
+        flags |= assets::MATERIAL_FLAG_DISABLE_AO | assets::MATERIAL_FLAG_DISABLE_FACE_DIMMING;
     }
     if record.name.as_ref() == "minecraft:glass" {
         flags |= MATERIAL_FLAG_ALPHA_CUTOUT;

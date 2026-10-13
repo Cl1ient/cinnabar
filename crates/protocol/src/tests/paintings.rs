@@ -1,9 +1,9 @@
+use crate::{ActorEvent, ActorKind, WorldEvent, into_world_event};
 use bedrock_protocol_1_26_51::{
     packets::AddPainting,
     types::{ActorRuntimeID, ActorUniqueID},
     wire,
 };
-use protocol::{ActorEvent, ActorKind, WorldEvent, into_world_event};
 
 #[test]
 fn add_painting_admits_the_native_spawn_packet() {

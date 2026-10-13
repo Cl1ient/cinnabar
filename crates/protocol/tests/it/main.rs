@@ -1,6 +1,5 @@
 mod level_chunk_borrowed_bytes;
 mod login_collection_bounds;
-mod paintings;
 mod recipe_admission;
 mod reserved_packets;
 mod reserved_values;

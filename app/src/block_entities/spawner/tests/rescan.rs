@@ -62,7 +62,7 @@ fn regression_distant_spawner_scans_are_budgeted_and_near_edits_are_immediate() 
         }
     }
     for admitted in (limit..=far.len()).step_by(limit) {
-        prepare_displays(&mut world, world::TICK_DURATION);
+        prepare_displays(&mut world, simulation_clock::TICK_DURATION);
         assert_eq!(
             published(&world),
             (admitted + 1) * 2,
@@ -73,7 +73,7 @@ fn regression_distant_spawner_scans_are_budgeted_and_near_edits_are_immediate() 
     changed.push(near);
     update_identifiers(&mut world, &changed, "custom:missing", &mut sequence);
     for refreshed in (limit..=far.len()).step_by(limit) {
-        prepare_displays(&mut world, world::TICK_DURATION);
+        prepare_displays(&mut world, simulation_clock::TICK_DURATION);
         let pool = world
             .resource::<SpawnerDisplayPublisher>()
             .0

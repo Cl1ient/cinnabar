@@ -325,7 +325,7 @@ fn prepare_displays(world: &mut bevy::prelude::World, delta: std::time::Duration
 #[test]
 fn regression_dimension_change_reuses_publication_ticks_and_fraction() {
     let mut world = system_fixture(serde_json::json!({}), "query.frame_alpha");
-    prepare_displays(&mut world, world::TICK_DURATION * 4 / 5);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION * 4 / 5);
     let session = world
         .resource::<ClientWorld>()
         .stream
@@ -350,7 +350,7 @@ fn regression_dimension_change_reuses_publication_ticks_and_fraction() {
         assert_eq!(stream.authority().actor_session_id(), session);
         admit_spawner(stream, [1024, 64, 1024], 3);
     }
-    prepare_displays(&mut world, world::TICK_DURATION * 2 / 5);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION * 2 / 5);
     let pool = world
         .resource::<SpawnerDisplayPublisher>()
         .0
@@ -385,7 +385,7 @@ fn regression_display_queries_receive_resolved_camera_before_tick_and_frame_samp
         }),
         "query.distance_from_camera + query.camera_rotation(0) / 100 + query.camera_rotation(1) / 100",
     );
-    prepare_displays(&mut world, world::TICK_DURATION);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION);
     let pool = world
         .resource::<SpawnerDisplayPublisher>()
         .0
@@ -411,7 +411,7 @@ fn regression_display_queries_receive_resolved_camera_before_tick_and_frame_samp
     world
         .resource_mut::<LocalViewPose>()
         .set_rotation(bevy::prelude::Quat::IDENTITY);
-    prepare_displays(&mut world, world::TICK_DURATION / 5);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION / 5);
     let pool = world
         .resource::<SpawnerDisplayPublisher>()
         .0
@@ -518,7 +518,7 @@ fn regression_display_limit_follows_distance_and_backing_filters() {
         };
         world.insert_resource(LocalViewPose::new(eye, bevy::prelude::Quat::IDENTITY));
         for _ in 0..2 {
-            prepare_displays(&mut world, world::TICK_DURATION);
+            prepare_displays(&mut world, simulation_clock::TICK_DURATION);
             let pool = world
                 .resource::<SpawnerDisplayPublisher>()
                 .0
@@ -540,7 +540,7 @@ fn regression_display_limit_follows_distance_and_backing_filters() {
                 Vec3::new(1039.0, 66.0, 1024.0),
                 bevy::prelude::Quat::IDENTITY,
             ));
-            prepare_displays(&mut world, world::TICK_DURATION);
+            prepare_displays(&mut world, simulation_clock::TICK_DURATION);
             let pool = world
                 .resource::<SpawnerDisplayPublisher>()
                 .0
@@ -584,7 +584,7 @@ fn regression_rejected_or_unrigged_entities_do_not_consume_the_display_limit() {
             bevy::prelude::Quat::IDENTITY,
         ));
         for _ in 0..2 {
-            prepare_displays(&mut world, world::TICK_DURATION);
+            prepare_displays(&mut world, simulation_clock::TICK_DURATION);
             let pool = world
                 .resource::<SpawnerDisplayPublisher>()
                 .0
@@ -641,7 +641,7 @@ fn regression_rigless_cache_eviction_preserves_unchanged_display_lifetimes() {
         translation: Vec3::new(1039.0, 66.0, 1000.0),
         ..Default::default()
     };
-    prepare_displays(&mut world, world::TICK_DURATION);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION);
     assert_eq!(published(&world), 2);
     let runtime = world
         .resource::<PreparedActorPublication>()
@@ -660,7 +660,7 @@ fn regression_rigless_cache_eviction_preserves_unchanged_display_lifetimes() {
         .unwrap()
         .actor;
     for _ in 0..3 {
-        prepare_displays(&mut world, world::TICK_DURATION);
+        prepare_displays(&mut world, simulation_clock::TICK_DURATION);
         let pool = world
             .resource::<SpawnerDisplayPublisher>()
             .0
@@ -693,11 +693,11 @@ fn regression_pack_changes_retry_rigless_column_requests() {
             2,
         );
     }
-    prepare_displays(&mut world, world::TICK_DURATION);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION);
     assert_eq!(published(&world), 0);
     let (replacement, _, _) = fixture_with_identifier(serde_json::json!({}), "1", "custom:missing");
     world.resource_mut::<ClientWorld>().pack_entities = replacement.pack;
-    prepare_displays(&mut world, world::TICK_DURATION);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION);
     assert_eq!(
         published(&world),
         2,
@@ -717,7 +717,7 @@ fn regression_full_display_pool_admits_a_disjoint_set_in_one_frame() {
         let mut client = world.resource_mut::<ClientWorld>();
         admit_spawners(client.stream.as_mut().unwrap(), first[1].0, &first, 2);
     }
-    prepare_displays(&mut world, world::TICK_DURATION);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION);
     let full = published(&world);
     assert!(full > 0, "the first display set must fill the pool");
     let second = display_plane(1025, "custom:display");
@@ -725,7 +725,7 @@ fn regression_full_display_pool_admits_a_disjoint_set_in_one_frame() {
         let mut client = world.resource_mut::<ClientWorld>();
         admit_spawners(client.stream.as_mut().unwrap(), second[1].0, &second, 3);
     }
-    prepare_displays(&mut world, world::TICK_DURATION);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION);
     assert_eq!(
         published(&world),
         full,
@@ -737,7 +737,7 @@ fn regression_full_display_pool_admits_a_disjoint_set_in_one_frame() {
 #[test]
 fn regression_developer_control_inspection_keeps_display_and_network_lifetimes_apart() {
     let mut world = system_fixture(serde_json::json!({}), "1");
-    prepare_displays(&mut world, world::TICK_DURATION);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION);
     let display_session = world
         .resource::<SpawnerDisplayPublisher>()
         .0
@@ -904,7 +904,7 @@ fn regression_display_slots_prefer_spawners_in_camera_view() {
         rotation: facing,
         ..Default::default()
     };
-    prepare_displays(&mut world, world::TICK_DURATION);
+    prepare_displays(&mut world, simulation_clock::TICK_DURATION);
     let pool = world
         .resource::<SpawnerDisplayPublisher>()
         .0

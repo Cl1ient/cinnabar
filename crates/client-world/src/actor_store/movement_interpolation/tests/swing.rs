@@ -232,7 +232,7 @@ fn repeated_remote_sword_swings_keep_wrapped_pitch_on_the_same_forward_arc_in_ev
                     "{mode:?}, interval {interval}, frame {index}: held sword changed its arc"
                 );
             }
-            for tick in actual.chunks_exact(FRACTIONS.len()) {
+            for tick in actual.as_chunks::<{ FRACTIONS.len() }>().0 {
                 assert!(
                     tick.windows(2)
                         .all(|pair| pair[1].progress >= pair[0].progress)

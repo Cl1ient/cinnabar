@@ -57,10 +57,10 @@ impl Builder<'_> {
         let key = route.key();
         let storage_key = self.catalog.storage_key(route, source)?;
         let carrier_policy = carrier.is_some() && source.is_none();
-        if let Some(storage) = self.slots.frames(&storage_key, false) {
-            if storage.is_some() || !carrier_policy {
-                return storage.map(|storage| (storage, true));
-            }
+        if let Some(storage) = self.slots.frames(&storage_key, false)
+            && (storage.is_some() || !carrier_policy)
+        {
+            return storage.map(|storage| (storage, true));
         }
         if carrier_policy && let Some(storage) = self.slots.frames(&storage_key, true) {
             return storage.map(|storage| (storage, false));

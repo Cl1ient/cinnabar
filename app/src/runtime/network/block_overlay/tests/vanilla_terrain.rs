@@ -3,8 +3,11 @@ use assets::Material;
 use assets::material_keys::{BlockTextureSource, MaterialKeys, MaterialTextureSource};
 use serde_json::{Value, json};
 
+/// One pack's terrain catalog, blocks catalog, and flat-colour rasters by path.
+type PackLayer<'a> = (Value, Value, Vec<(&'a str, [u8; 4])>);
+
 /// Packs contain only original tiny catalogs and flat color rasters.
-fn stack(layers: &[(Value, Value, Vec<(&str, [u8; 4])>)]) -> LayeredPackView {
+fn stack(layers: &[PackLayer<'_>]) -> LayeredPackView {
     let archives = layers.iter().enumerate().rev().map(|(index, (terrain, blocks, colors))| {
         let id = format!("00000000-0000-0000-0000-{:012}", index + 1);
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
@@ -47,7 +50,12 @@ fn base() -> RuntimeAssets {
         animation_frames: Box::new([]),
         texture_pages: diagnostic.texture_pages().to_vec().into(),
         biomes: assets::CompiledBiomeAssets::diagnostic(),
-        provenance: diagnostic.provenance(),
+        provenance: assets::BlobProvenance {
+            source_manifest_sha256: [1; 32],
+            block_registry_sha256: [2; 32],
+            light_registry_sha256: [3; 32],
+            biome_registry_sha256: [4; 32],
+        },
     };
     RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap()
 }

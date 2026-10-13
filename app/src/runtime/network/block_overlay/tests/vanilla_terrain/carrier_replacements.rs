@@ -32,7 +32,6 @@ fn carrier_with_animation(
     animation: Option<assets::Animation>,
     frames: Vec<assets::TextureRef>,
 ) -> RuntimeAssets {
-    let diagnostic = RuntimeAssets::diagnostic();
     let layers = texture.layers;
     let mut cube = super::super::super::diagnostic_visual();
     cube.kind = VisualKind::Cube;
@@ -61,7 +60,12 @@ fn carrier_with_animation(
         animation_frames: frames.into(),
         texture_pages: vec![assets::TexturePage::new(texture)].into(),
         biomes: assets::CompiledBiomeAssets::diagnostic(),
-        provenance: diagnostic.provenance(),
+        provenance: assets::BlobProvenance {
+            source_manifest_sha256: [1; 32],
+            block_registry_sha256: [2; 32],
+            light_registry_sha256: [3; 32],
+            biome_registry_sha256: [4; 32],
+        },
     };
     RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap()
 }
@@ -477,11 +481,14 @@ fn carrier_sources_resolve_explicit_png_and_relative_path_spellings() {
     }
 }
 
+/// A raster path, its width and height, and the colours of its two frames.
+type TimelineImage<'a> = (&'a str, u32, u32, [u8; 4], [u8; 4]);
+
 /// Builds original rasters and optional flipbook metadata without using an installed carrier.
 fn timeline_pack(
     terrain: Value,
     flipbooks: Value,
-    images: &[(&str, u32, u32, [u8; 4], [u8; 4])],
+    images: &[TimelineImage<'_>],
 ) -> LayeredPackView {
     timeline_pack_with_bindings(terrain, flipbooks, images, json!({}))
 }
@@ -490,7 +497,7 @@ fn timeline_pack(
 fn timeline_pack_with_bindings(
     terrain: Value,
     flipbooks: Value,
-    images: &[(&str, u32, u32, [u8; 4], [u8; 4])],
+    images: &[TimelineImage<'_>],
     blocks: Value,
 ) -> LayeredPackView {
     let id = "00000000-0000-0000-0000-000000000001";

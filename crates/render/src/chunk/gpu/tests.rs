@@ -1140,3 +1140,43 @@ fn origin_planning_handles_zero_and_one_entry_limits_without_retry_growth() {
         "a resident origin cannot be replaced without a second slot"
     );
 }
+
+/// A generation whose biome record matches the resident one word for word keeps its range, and
+/// retiring the previous generation leaves that range to it.
+#[test]
+fn identical_biome_record_keeps_its_resident_range() {
+    let column = world::DecodedBiomeColumn::decode(
+        -4,
+        1,
+        &[1, 84],
+        &world::RawBiomeIds { default_biome: 0 },
+    );
+    let storage = column.storage(-4).expect("decoded biome section");
+    let record = meshing::PackedBiomeRecord::from_storage(&storage, |id| id + 1);
+    let recoloured = meshing::PackedBiomeRecord::from_storage(&storage, |id| id + 2);
+    assert!(!record.is_fallback());
+    let mut old = retirement_test_allocation();
+    assert_eq!(
+        old.reusable_biome(&record),
+        None,
+        "the fallback holds no record"
+    );
+
+    old.biome_record = Some(record.clone());
+    assert_eq!(old.reusable_biome(&record), Some((2..6, 4)));
+    assert_eq!(old.reusable_biome(&recoloured), None);
+
+    let entity = Entity::from_raw_u32(1).unwrap();
+    let kept = RetiredArenaAllocation::keeping_biome(entity, old.clone());
+    let full = RetiredArenaAllocation::full(entity, old);
+    assert_eq!(kept.biome, None);
+    assert_eq!(full.biome, Some((2..6, 4)));
+    assert_eq!(
+        full.owned_bytes() - kept.owned_bytes(),
+        4 * BIOME_WORD_BYTES
+    );
+    assert_eq!(
+        (kept.quad, kept.geometry, kept.origin),
+        (full.quad, full.geometry, full.origin)
+    );
+}

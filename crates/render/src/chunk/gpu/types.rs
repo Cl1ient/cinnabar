@@ -552,6 +552,8 @@ pub(in crate::chunk) struct ArenaAllocation {
     pub(in crate::chunk) geometry_stream_capacity: u32,
     pub(in crate::chunk) biome_range: Range<u32>,
     pub(in crate::chunk) biome_capacity: u32,
+    /// The record written to `biome_range`, or `None` for the shared fallback.
+    pub(in crate::chunk) biome_record: Option<meshing::PackedBiomeRecord>,
     pub(in crate::chunk) gpu: GpuChunkAllocation,
 }
 
@@ -604,6 +606,14 @@ impl RetiredArenaAllocation {
         }
     }
 
+    /// [`Self::full`] except the biome range, which the next generation keeps.
+    pub(in crate::chunk) fn keeping_biome(entity: Entity, allocation: ArenaAllocation) -> Self {
+        Self {
+            biome: None,
+            ..Self::full(entity, allocation)
+        }
+    }
+
     pub(in crate::chunk) fn owned_bytes(&self) -> u64 {
         let quad = self
             .quad
@@ -629,6 +639,18 @@ impl RetiredArenaAllocation {
 }
 
 impl ArenaAllocation {
+    /// This allocation's biome range and capacity when it already holds exactly `record`, so a
+    /// new generation can keep it without rewriting or reallocating it.
+    pub(in crate::chunk) fn reusable_biome(
+        &self,
+        record: &meshing::PackedBiomeRecord,
+    ) -> Option<(Range<u32>, u32)> {
+        self.biome_record
+            .as_ref()
+            .filter(|resident| resident.words() == record.words())
+            .map(|_| (self.biome_range.clone(), self.biome_capacity))
+    }
+
     pub(in crate::chunk) fn expected_streams(&self) -> ChunkStreamMask {
         let mut mask = ChunkStreamMask::default();
         if self.cube_range.is_some() || self.cube_lighting_range.is_some() {

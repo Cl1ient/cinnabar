@@ -214,7 +214,13 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
             );
             continue;
         }
-        let biome_words = if biome_record_is_fallback(&instance.biome) {
+        let fallback_biome = biome_record_is_fallback(&instance.biome);
+        // A remesh rarely changes biomes: an identical record keeps its resident range.
+        let kept_biome = old
+            .as_ref()
+            .filter(|_| !fallback_biome)
+            .and_then(|old| old.reusable_biome(&instance.biome));
+        let biome_words = if fallback_biome || kept_biome.is_some() {
             Vec::new()
         } else {
             instance.biome.words().to_vec()
@@ -254,9 +260,13 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
         // fresh complete allocation and keep the old one resident until the
         // queue-completion fence proves that no submitted frame can refer to
         // it anymore.
-        let retirement = old
-            .as_ref()
-            .map(|old| RetiredArenaAllocation::full(entity, old.clone()));
+        let retirement = old.as_ref().map(|old| {
+            if kept_biome.is_some() {
+                RetiredArenaAllocation::keeping_biome(entity, old.clone())
+            } else {
+                RetiredArenaAllocation::full(entity, old.clone())
+            }
+        });
         if let Some(retirement) = retirement.as_ref()
             && !arena
                 .retirement_budget
@@ -362,6 +372,10 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
         }
         let metadata_index = allocate_origin(&mut arena)
             .expect("origin capacity was checked before quad allocation");
+        let (biome_range, biome_capacity) = kept_biome.unwrap_or((
+            plan.biome_start..plan.biome_start + biome_required,
+            plan.biome_capacity,
+        ));
         let cube_range = checked_geometry_range(plan.quad_start, required);
         let cube_lighting_range = checked_geometry_range(
             plan.cube_lighting_start,
@@ -447,7 +461,7 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
         let cube_lighting_words = packed_lighting_records(&instance.cube_lighting);
         let origin = gpu_chunk_origin(
             instance.origin,
-            plan.biome_start,
+            biome_range.start,
             plan.quad_start,
             plan.cube_lighting_start,
             plan.liquid_start,
@@ -543,8 +557,9 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
                     .expect("stream counts were checked before allocation"),
                 ),
                 geometry_stream_capacity: plan.geometry_stream_capacity,
-                biome_range: plan.biome_start..plan.biome_start + biome_required,
-                biome_capacity: plan.biome_capacity,
+                biome_range,
+                biome_capacity,
+                biome_record: (!fallback_biome).then(|| instance.biome.clone()),
                 gpu,
             },
         );

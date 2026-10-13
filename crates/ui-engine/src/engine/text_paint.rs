@@ -7,8 +7,8 @@ use std::{borrow::Cow, cell::RefCell, sync::Arc};
 use assets::RuntimeFontCatalog;
 use json_ui::{LabelShape, TextAlign, TextMeasure, TextOptions};
 use ui::{
-    FONT_DESIGN_PIXEL_TEXELS, TextLayoutCache, TextLayoutRequest, TextLineAlign, TextShadow,
-    TextWrap, UiNode, UiScale, UiVisual, WordChop,
+    FONT_DESIGN_PIXEL_TEXELS, FONT_INK_TEXELS, TextLayoutCache, TextLayoutRequest, TextLineAlign,
+    TextShadow, TextWrap, UiNode, UiScale, UiVisual, WordChop,
 };
 
 use super::{Canvas, rect, screen::PaintError, tooltip::TEXT_PITCH};
@@ -17,8 +17,7 @@ use crate::text_metrics::TextMetrics;
 /// Largest wrap width handed to the text layout (logical px), for "no wrap".
 pub const UNWRAPPED_LOGICAL: f64 = 65_536.0;
 
-/// Default bitmap labels use the font's native wrap height, independently of chat's pitch.
-/// Attached named fonts keep their existing metrics instead of inheriting bitmap geometry.
+/// Keeps bitmap label spacing and sizes native faces from their own outline metrics.
 fn label_metrics(
     mut metrics: TextMetrics,
     default: &RuntimeFontCatalog,
@@ -26,6 +25,17 @@ fn label_metrics(
 ) -> TextMetrics {
     if std::ptr::eq(default, selected) {
         metrics.line_height_64 = TEXT_PITCH * FONT_DESIGN_PIXEL_TEXELS * 64;
+    } else if let Some(source) = selected.line_metrics() {
+        let size = metrics.scale.get() * FONT_INK_TEXELS as f32;
+        if let Ok(scale) = UiScale::new_display(size * 64.0 / source.em_64 as f32) {
+            metrics.scale = scale;
+            let line = source.em_64 as f32 * (TEXT_PITCH * FONT_DESIGN_PIXEL_TEXELS) as f32
+                / FONT_INK_TEXELS as f32;
+            let leading = (line - source.ascent_64 as f32 - source.descent_64 as f32) * 0.5;
+            metrics.line_height_64 = line.round() as u32;
+            metrics.baseline_64 =
+                (source.ascent_64 as f32 + leading).clamp(0.0, line).round() as u32;
+        }
     }
     metrics
 }
@@ -400,3 +410,6 @@ pub fn active_codes(text: &str) -> String {
     }
     codes
 }
+
+#[cfg(test)]
+mod tests;

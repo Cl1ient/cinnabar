@@ -606,6 +606,7 @@ pub(super) fn hand_source(
         presentation: inputs.presentation,
         body,
         items: [main_layer, off_layer],
+        item_glint: inputs.artwork.item_glint.clone(),
         motion,
         body_camera,
     })

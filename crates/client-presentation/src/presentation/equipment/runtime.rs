@@ -614,7 +614,7 @@ impl EquipmentRuntime {
         }
         // Modern attachables are evaluated in their own first-person state before this
         // fallback. Never substitute a third-person grip for their camera-space animation.
-        let (mesh, location, block) = self.held_mesh(item, true)?;
+        let (mesh, location, block, span) = self.held_mesh(item, true)?;
         let shape = if block {
             FirstPersonShape::Block
         } else {
@@ -643,7 +643,11 @@ impl EquipmentRuntime {
             .poses
             .share(body, FIRST_PERSON_ITEM_LAYER, [&[bone], &[bone]]);
         Some(FirstPersonItem {
-            presentation: layer_presentation(body, LAYER_MAIN_HAND, mesh, poses, location, 0),
+            presentation: push::held_glint(
+                layer_presentation(body, LAYER_MAIN_HAND, mesh, poses, location, 0),
+                item,
+                span,
+            ),
             camera_space: true,
             alpha_mode: self.first_person_alpha_mode(item, block),
             java_camera: None,
@@ -657,7 +661,7 @@ impl EquipmentRuntime {
         body: &ActorRigSubmission,
         item: &WornItem,
     ) -> Option<FirstPersonItem> {
-        let (mesh, location, block) = self.held_mesh(item, true)?;
+        let (mesh, location, block, span) = self.held_mesh(item, true)?;
         let equipped = item.grip.upright().unwrap_or(false);
         let bone = if block {
             super::first_person::offhand_pose(equipped, true)
@@ -676,7 +680,11 @@ impl EquipmentRuntime {
             .poses
             .share(body, FIRST_PERSON_OFFHAND_LAYER, [&[bone], &[bone]]);
         Some(FirstPersonItem {
-            presentation: layer_presentation(body, LAYER_OFF_HAND, mesh, poses, location, 0),
+            presentation: push::held_glint(
+                layer_presentation(body, LAYER_OFF_HAND, mesh, poses, location, 0),
+                item,
+                span,
+            ),
             camera_space: true,
             alpha_mode: self.first_person_alpha_mode(item, block),
             java_camera: None,
@@ -803,6 +811,10 @@ impl EquipmentRuntime {
                             for axis in 0..2 {
                                 uv[axis] = rect[axis] + uv[axis] * (rect[axis + 2] - rect[axis]);
                             }
+                        }
+                        for axis in 0..2 {
+                            vertex.glint_origin[axis] = rect[axis]
+                                + vertex.glint_origin[axis] * (rect[axis + 2] - rect[axis]);
                         }
                         vertex
                     })

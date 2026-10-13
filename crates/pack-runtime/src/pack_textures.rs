@@ -106,20 +106,6 @@ pub fn normalize_texture_path(path: &str) -> &str {
     path.trim().trim_start_matches("./")
 }
 
-/// Checks archive indices for raster or texture-set candidates without reading their bytes.
-pub fn has_texture_source(view: &LayeredPackView, path: &str) -> bool {
-    let path = normalize_texture_path(path);
-    let exists = |candidate: &str| {
-        view.layers()
-            .any(|layer| layer.file_size(candidate).is_some())
-    };
-    exists(path)
-        || IMAGE_EXTENSIONS
-            .into_iter()
-            .any(|(extension, _)| exists(&format!("{path}.{extension}")))
-        || exists(&format!("{path}.texture_set.json"))
-}
-
 /// Decodes the winning image at `path`, trying `.png`, `.tga`, and `.jpg` as
 /// vanilla does, then the color layer of a `.texture_set.json`.
 pub fn decode_pack_texture(view: &LayeredPackView, path: &str) -> Option<DecodedTexture> {
@@ -136,11 +122,11 @@ pub fn decode_pack_texture_with_policy(
     view: &LayeredPackView,
     path: &str,
     policy: TexturePolicy,
-    vertical_strip: bool,
+    allow_strip: bool,
 ) -> Option<DecodedTexture> {
     let path = normalize_texture_path(path);
-    decode_image_file(view, path, policy, vertical_strip)
-        .or_else(|| decode_texture_set(view, path, policy, vertical_strip))
+    decode_image_file(view, path, policy, allow_strip)
+        .or_else(|| decode_texture_set(view, path, policy, allow_strip))
 }
 
 /// Tries the literal image path, then the supported file extensions in precedence order.
@@ -148,7 +134,7 @@ fn decode_image_file(
     view: &LayeredPackView,
     path: &str,
     policy: TexturePolicy,
-    vertical_strip: bool,
+    allow_strip: bool,
 ) -> Option<DecodedTexture> {
     // Vanilla's loader also tries the literal path, so a pack path that already
     // names its image (`textures/items/gem.png`) resolves.
@@ -160,7 +146,7 @@ fn decode_image_file(
     if let Some((_, format)) = named
         && let Some(texture) = view
             .read_capped(path, MAX_TEXTURE_SOURCE_BYTES as u64)
-            .and_then(|bytes| decode_image_with_policy(&bytes, format, policy, vertical_strip))
+            .and_then(|bytes| decode_image_with_policy(&bytes, format, policy, allow_strip))
     {
         return Some(texture);
     }
@@ -171,7 +157,7 @@ fn decode_image_file(
                 &format!("{path}.{extension}"),
                 MAX_TEXTURE_SOURCE_BYTES as u64,
             )?;
-            decode_image_with_policy(&bytes, format, policy, vertical_strip)
+            decode_image_with_policy(&bytes, format, policy, allow_strip)
         })
 }
 
@@ -180,7 +166,7 @@ fn decode_texture_set(
     view: &LayeredPackView,
     path: &str,
     policy: TexturePolicy,
-    vertical_strip: bool,
+    allow_strip: bool,
 ) -> Option<DecodedTexture> {
     let bytes = view.read_capped(&format!("{path}.texture_set.json"), MAX_TEXTURE_SET_BYTES)?;
     let root = parse_pack_json(&bytes)?;
@@ -193,7 +179,7 @@ fn decode_texture_set(
             [sibling, name.to_owned()]
                 .into_iter()
                 .filter(|target| target != path)
-                .find_map(|target| decode_image_file(view, &target, policy, vertical_strip))
+                .find_map(|target| decode_image_file(view, &target, policy, allow_strip))
         }
         Value::Array(channels) if matches!(channels.len(), 3 | 4) => {
             let mut pixel = [0, 0, 0, 255];
@@ -243,23 +229,24 @@ fn decode_image_with_policy(
     bytes: &[u8],
     format: ImageFormat,
     policy: TexturePolicy,
-    vertical_strip: bool,
+    allow_strip: bool,
 ) -> Option<DecodedTexture> {
     if bytes.is_empty() || bytes.len() > MAX_TEXTURE_SOURCE_BYTES {
         return None;
     }
     let mut limits = Limits::default();
-    limits.max_image_width = Some(policy.max_side());
-    limits.max_image_height = Some(if vertical_strip {
+    let max_dimension = if allow_strip {
         u32::from(u16::MAX)
     } else {
         policy.max_side()
-    });
+    };
+    limits.max_image_width = Some(max_dimension);
+    limits.max_image_height = Some(max_dimension);
     limits.max_alloc = Some(MAX_DECODE_BYTES);
     let mut header = ImageReader::with_format(Cursor::new(bytes), format);
     header.limits(limits.clone());
     let (width, height) = header.into_dimensions().ok()?;
-    let expected = policy.source_bytes(width, height, vertical_strip)?;
+    let expected = policy.source_bytes(width, height, allow_strip)?;
     let mut reader = ImageReader::with_format(Cursor::new(bytes), format);
     reader.limits(limits);
     let rgba8 = reader

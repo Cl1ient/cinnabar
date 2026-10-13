@@ -24,16 +24,18 @@ impl Builder<'_> {
         if let Some(source) = source.as_ref() {
             let storage_key = self.catalog.storage_key(key, Some(source))?;
             if let Some(&storage) = self.frame_storage.get(&storage_key) {
-                return self.bind_frames(storage, Some(source), selector);
-            }
-            // At capacity, an absent source can still use cached static fallback storage.
-            if self.sources.len() < self.max_layers || self.catalog.has_source(&source.texture_path)
-            {
-                let available = self.remaining_capacity(key)?;
-                if let Some(texture) = self.catalog.decode_path(key, &source.texture_path) {
-                    let storage =
-                        self.store_frames(key, storage_key, texture, Some(source), available)?;
-                    return self.bind_frames(storage, Some(source), selector);
+                if let Some(slot) = self.bind_frames(storage, Some(source), selector) {
+                    return Some(slot);
+                }
+            } else {
+                let available = self.max_layers.saturating_sub(self.sources.len());
+                if available > 0
+                    && let Some(texture) = self.catalog.decode_path(key, &source.texture_path)
+                    && let Some(storage) =
+                        self.store_frames(key, storage_key, texture, Some(source), available)
+                    && let Some(slot) = self.bind_frames(storage, Some(source), selector)
+                {
+                    return Some(slot);
                 }
             }
         }

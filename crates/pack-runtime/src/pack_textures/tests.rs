@@ -37,6 +37,35 @@ fn large_strips_and_particle_atlases_retain_every_source_pixel() {
 }
 
 #[test]
+fn horizontal_strip_decoding_checks_both_axes_before_pixel_allocation() {
+    let policy = TexturePolicy::for_device(64);
+    for (width, height) in [(8192, 64), (64, 8192)] {
+        let bytes = png(width, height);
+        let view =
+            LayeredPackView::new(crate::test_support::stack(&[("textures/test.png", &bytes)]));
+        let texture =
+            decode_pack_texture_with_policy(&view, "textures/test", policy, true).unwrap();
+        assert_eq!([texture.width, texture.height], [width, height]);
+        assert_eq!(texture.rgba8.len(), (width * height * 4) as usize);
+        assert_eq!(
+            &texture.rgba8[texture.rgba8.len() - 4..],
+            &[
+                (width - 1) as u8,
+                (height - 1) as u8,
+                ((height - 1) / width) as u8,
+                255
+            ]
+        );
+        assert!(decode_pack_texture_with_policy(&view, "textures/test", policy, false).is_none());
+    }
+    for (width, height) in [(8193, 64), (8192, 65)] {
+        assert!(
+            decode_image_with_policy(&png(width, height), ImageFormat::Png, policy, true).is_none()
+        );
+    }
+}
+
+#[test]
 fn malformed_over_budget_and_device_oversized_images_are_rejected() {
     let policy = TexturePolicy::for_device(assets::texture::policy::MAX_TEXTURE_SIDE);
     assert!(decode_image_with_policy(b"broken", ImageFormat::Png, policy, true).is_none());

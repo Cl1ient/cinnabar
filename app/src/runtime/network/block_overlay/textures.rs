@@ -11,8 +11,8 @@ mod terrain;
 mod tint;
 use diagnostics::{FailureReason, TextureDiagnostics};
 use pack_runtime::pack_textures::{
-    MAX_CATALOG_ENTRIES, decode_pack_texture_with_policy, has_texture_source,
-    normalize_texture_path, parse_pack_json, texture_key_paths,
+    MAX_CATALOG_ENTRIES, decode_pack_texture_with_policy, normalize_texture_path, parse_pack_json,
+    texture_key_paths,
 };
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
 
@@ -118,6 +118,7 @@ impl<'a> TextureCatalog<'a> {
     }
 
     /// Identifies shared pixels by their image route, frame sampling, tint, and UV grid.
+    /// Only a missing static terrain route returns `None`; flipbooks carry their own path.
     pub(super) fn storage_key(
         &self,
         key: &str,
@@ -148,11 +149,6 @@ impl<'a> TextureCatalog<'a> {
             return None;
         };
         Some(path)
-    }
-
-    /// Checks source candidates by archive metadata without inflating or decoding them.
-    pub(super) fn has_source(&self, path: &str) -> bool {
-        has_texture_source(self.view, path)
     }
 
     /// Decodes an independent animation source with the destination tile's atlas tint.

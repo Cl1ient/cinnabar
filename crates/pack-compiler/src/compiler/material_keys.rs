@@ -2,28 +2,38 @@
 
 use super::*;
 
-/// Records terrain aliases, flipbooks, and the destination each compiled material uses.
+/// Records renderable terrain destinations, using weighted leaves instead of group selectors.
 pub(super) fn build(
     pack: &PackSources,
     descriptors: &BTreeMap<Descriptor, u32>,
     materials: &[Material],
     animations: &[Animation],
 ) -> MaterialKeys {
-    MaterialKeys::from_entries(
-        descriptors
-            .iter()
-            .map(|(descriptor, &material)| (material, descriptor.texture_key.as_ref())),
-    )
-    .with_aliases(pack.terrain.first_paths())
-    .with_flipbooks(&pack.flipbooks)
-    .with_flipbook_destinations(pack.terrain.flipbook_destinations())
-    .with_flipbook_selectors(descriptors.iter().map(|(descriptor, &material)| {
+    let mut routes = Vec::new();
+    for (descriptor, &id) in descriptors {
+        let material = &materials[id as usize];
         let animated = animations
-            .get(materials[material as usize].animation as usize)
+            .get(material.animation as usize)
             .map(|animation| (animation.atlas_index, animation.atlas_tile_variant));
-        let (_, index, variant) = destination(descriptor, animated);
-        (material, (index, variant))
-    }))
+        let (key, index, variant) = destination(descriptor, animated);
+        if material.variation_count > 0 {
+            routes.extend(
+                (0..material.variation_count)
+                    .map(|variant| (material.variation_start + variant, key, (index, variant))),
+            );
+        } else if !pack
+            .terrain
+            .position_variations
+            .contains_key(&(descriptor.texture_key.clone(), descriptor.state_variant))
+        {
+            routes.push((id, key, (index, variant)));
+        }
+    }
+    MaterialKeys::from_entries(routes.iter().map(|&(id, key, _)| (id, key)))
+        .with_aliases(pack.terrain.first_paths())
+        .with_flipbooks(&pack.flipbooks)
+        .with_flipbook_destinations(pack.terrain.flipbook_destinations())
+        .with_flipbook_selectors(routes.into_iter().map(|(id, _, selector)| (id, selector)))
 }
 
 /// Identifies a material's terrain destination independently of its deduplicated pixels.

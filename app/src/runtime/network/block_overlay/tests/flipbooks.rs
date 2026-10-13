@@ -585,6 +585,103 @@ fn full_arrays_reuse_shared_frames_without_reading_uncached_image_payloads() {
 }
 
 #[test]
+fn animation_failures_keep_static_visuals_and_cached_overrides() {
+    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
+        .with_flipbook_destinations([("tile", [2])]);
+    let blocks = CustomBlocks {
+        blocks: vec![block(
+            "test:tile",
+            1,
+            CustomBlockVisuals {
+                base: CustomVisualComponents {
+                    geometry: Some("minecraft:geometry.full_block".into()),
+                    materials: materials("tile"),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )]
+        .into(),
+        ..Default::default()
+    };
+    let raster = png(16, 16, |_, _| [11, 17, 23, 255]);
+    for (width, height, ticks) in [(48, 32, 2), (32, 48, 2), (16, 32, u32::MAX)] {
+        let invalid = png(width, height, |_, _| [200, 100, 0, 255]);
+        let description = serde_json::to_vec(&serde_json::json!([{
+            "atlas_tile":"tile", "flipbook_texture":"textures/invalid", "ticks_per_frame":ticks
+        }]))
+        .unwrap();
+        // Keep both source frames available when checking timeline overflow.
+        let layers = if ticks == u32::MAX { 4 } else { 2 };
+        let compiled = super::super::compile_block_overlay(
+            &pack(&[
+                ("textures/static.png", &raster),
+                ("textures/invalid.png", &invalid),
+                ("textures/flipbook_textures.json", &description),
+            ]),
+            &blocks,
+            false,
+            Some(&keys),
+            layers,
+        )
+        .unwrap();
+        assert_eq!(compiled.gaps.missing_textures, 0);
+        assert_eq!(compiled.gaps.saturated_textures, 0);
+        assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+        assert!(compiled.overlay.animations.is_empty());
+        assert_eq!(compiled.overlay.material_overrides.len(), 2);
+        let texture = compiled.overlay.material_overrides[0].texture;
+        assert_eq!(pixel(&compiled.overlay, texture), [11, 17, 23, 255]);
+        for replacement in &compiled.overlay.material_overrides {
+            assert_eq!(replacement.texture, texture);
+            assert_eq!(replacement.animation, assets::NO_ANIMATION);
+        }
+        for &id in &compiled.overlay.visuals[0].faces {
+            assert_ne!(id, 0);
+            assert_eq!(compiled.overlay.materials[id as usize].texture, texture);
+        }
+    }
+}
+
+#[test]
+fn wide_horizontal_strips_keep_every_frame_and_share_them_across_selectors() {
+    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
+        .with_flipbook_destinations([("tile", [2])]);
+    let strip = png(8192, 64, |x, y| {
+        [(x / 64) as u8, (x % 64) as u8, y as u8, 255]
+    });
+    let raster = png(16, 16, |_, _| [0, 180, 0, 255]);
+    let compiled = super::super::compile_block_overlay(
+        &pack(&[("textures/static.png", &raster), ("textures/horizontal.png", &strip),
+            ("textures/flipbook_textures.json", br#"[{"atlas_tile":"tile","flipbook_texture":"textures/horizontal","ticks_per_frame":7}]"#)]),
+        &CustomBlocks::default(), false, Some(&keys), 129,
+    ).unwrap();
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 129);
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().mips[0].size, 64);
+    assert_eq!(compiled.gaps.saturated_textures, 0);
+    assert_eq!(compiled.overlay.material_overrides.len(), 2);
+    assert_eq!(compiled.overlay.animation_frames.len(), 128);
+    for replacement in &compiled.overlay.material_overrides {
+        assert_ne!(replacement.animation, assets::NO_ANIMATION);
+        let animation = &compiled.overlay.animations[replacement.animation as usize];
+        assert_eq!((animation.frame_count, animation.ticks_per_frame), (128, 7));
+        assert_eq!(animation.atlas_tile_variant, replacement.material - 1);
+        let frames = &compiled.overlay.animation_frames[animation.frame_start as usize..][..128];
+        for (index, &frame) in frames.iter().enumerate() {
+            assert_eq!(pixel(&compiled.overlay, frame), [index as u8, 0, 0, 255]);
+            assert_eq!(
+                compiled.overlay.texture_source_sizes[frame.layer() as usize],
+                [64; 2]
+            );
+        }
+    }
+}
+
+#[test]
 fn a_later_all_variant_description_overwrites_an_earlier_exact_destination() {
     let keys = assets::MaterialKeys::from_entries([(1, "tile")])
         .with_aliases([("tile", "textures/static")])

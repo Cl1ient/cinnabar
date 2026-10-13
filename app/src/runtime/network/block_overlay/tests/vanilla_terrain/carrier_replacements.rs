@@ -427,29 +427,53 @@ fn carrier_and_pack_sources_share_grid_tint_and_carried_art_preparation() {
 }
 
 #[test]
-fn overlay_color_carried_bindings_leave_world_and_carried_routes_unchanged() {
+fn overlay_color_carried_bindings_skip_rebinding_without_blocking_raster_updates() {
     let base = carrier(&[[100, 120, 140, 128]], [1; 6], &[0, 0]);
+    let raster = carrier(&[[20, 30, 200, 128]], [1; 6], &[0, 0]);
     for carried in [
         json!({"path":"textures/base_a","overlay_color":"#20ff30"}),
         json!({"variations":[{"path":"textures/base_a","overlay_color":"#20ff30","weight":1}]}),
     ] {
         let terrain = json!({"texture_data":{"world":{"textures":"textures/base_a"},"carry":{"textures":carried}}});
         let blocks = json!({"fixture":{"textures":"world","carried_textures":"carry"}});
-        for view in [
-            stack(&[(terrain.clone(), blocks.clone(), vec![])]),
-            raster_pack(terrain, blocks, &base.texture_array().mips[0]),
+        for (has_raster, view) in [
+            (false, stack(&[(terrain.clone(), blocks.clone(), vec![])])),
+            (
+                true,
+                raster_pack(terrain, blocks, &raster.texture_array().mips[0]),
+            ),
         ] {
-            assert!(
-                super::super::super::compile_block_overlay(
-                    &view,
-                    &CustomBlocks::default(),
-                    false,
-                    Some(&keys()),
-                    assets::MAX_TEXTURE_LAYERS as u32,
-                    Some(&base)
-                )
-                .is_none()
+            let compiled = super::super::super::compile_block_overlay(
+                &view,
+                &CustomBlocks::default(),
+                false,
+                Some(&keys()),
+                assets::MAX_TEXTURE_LAYERS as u32,
+                Some(&base),
             );
+            if !has_raster {
+                assert!(compiled.is_none());
+                continue;
+            }
+            let compiled = compiled.expect("independent base raster replacement");
+            assert!(compiled.overlay.face_overrides.is_empty());
+            assert!(
+                compiled
+                    .vanilla_carried
+                    .iter()
+                    .all(|route| route.visual != 0)
+            );
+            assert_eq!(compiled.overlay.material_overrides.len(), 1);
+            assert_eq!(compiled.overlay.material_overrides[0].material, 1);
+            let runtime = base.with_block_overlay(2, &compiled.overlay).unwrap();
+            assert_eq!(
+                runtime.resolve(assets::NetworkIdMode::Sequential, 0),
+                base.resolve(assets::NetworkIdMode::Sequential, 0),
+            );
+            assert_eq!(material_color(&runtime, 1), [20, 30, 200, 128]);
+            assert_eq!(runtime.material(1).texture.page(), 1);
+            assert_eq!(material_color(&base, 1), [100, 120, 140, 128]);
+            assert_eq!(runtime.material(2), base.material(2));
         }
     }
 }
@@ -781,7 +805,7 @@ fn failed_weighted_selectors_release_pixels_frames_and_cached_slots() {
                     256,
                     if animated { 512 } else { 256 },
                     first,
-                    first,
+                    if animated { good } else { first },
                 ),
                 ("textures/good", 16, 16, good, good),
             ];

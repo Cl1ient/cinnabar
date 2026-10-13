@@ -18,7 +18,8 @@ of the final lifted plane, including cosmetic scale, before starting the next la
 Only lines that fit the scene and atlas contribute to the lift. Viewer distance still
 controls visibility and score range. Sneaking labels draw only a depth-tested plate and dim text.
 Dim text alpha is `32 / 255`; only tested text writes depth. Labels have no depth
-bias, and final fragment alpha must exceed `0.1`. Distance from the viewer's feet
+bias, and sampled atlas coverage must exceed `0.1` before text alpha and cosmetic
+opacity are applied. Distance from the viewer's feet
 must be below 64 blocks, or 32 while sneaking; server limits can shorten this.
 Invisible actors, mounts carrying passengers and server hide flags suppress labels.
 The local label stays hidden by default; the existing optional own-tag style is

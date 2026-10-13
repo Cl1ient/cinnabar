@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 /// Java label scale in blocks per font design pixel; debug text shares this scale.
 pub const NAMETAG_BLOCKS_PER_FONT_PIXEL: f32 = 1.6 * (1.0 / 60.0);
-/// Final alpha must exceed this value for a Java label fragment to survive.
+/// Atlas coverage must exceed this value before label opacity is applied.
 pub const NAMETAG_ALPHA_CUTOFF: f32 = 0.1;
+/// Native opacity for sneaking text and the ordinary through-wall text pass.
+pub const NAMETAG_DIM_TEXT_ALPHA: f32 = 32.0 / 255.0;
 pub const NAMETAG_TEXT_REVERSE_Z_BIAS: i32 = 32;
 /// Side of the square RGBA8 text atlas.
 pub const NAMETAG_ATLAS_SIDE: u32 = 2048;
@@ -79,6 +81,19 @@ pub struct NametagRecord {
 }
 
 impl NametagRecord {
+    /// Evaluates a software label fragment, rejecting low atlas coverage before color opacity.
+    /// Flat plates ignore the supplied texel; sampled RGB is already in the desired color space.
+    #[must_use]
+    pub fn fragment_color(&self, texel: [f32; 4]) -> Option<[f32; 4]> {
+        let texel = if self.uv[2] < 0.0 { [1.0; 4] } else { texel };
+        if texel[3] <= NAMETAG_ALPHA_CUTOFF {
+            return None;
+        }
+        Some(std::array::from_fn(|channel| {
+            self.color[channel] * texel[channel]
+        }))
+    }
+
     /// Builds the screen-aligned world quad from the camera's world rotation, as in the shader.
     /// Local X follows camera-right and local Y follows camera-down, in font pixels.
     /// Returns `None` for non-finite geometry or a camera rotation that is not normalized.

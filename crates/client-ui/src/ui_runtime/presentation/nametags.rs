@@ -10,8 +10,9 @@ use client_world::{ACTOR_FLAG_SHOW_NAME, ActorSnapshot};
 use glam::Vec3;
 use protocol::{ActorKind, ActorMetadataValue};
 use render_model::{
-    MAX_NAMETAG_RECORDS, NAMETAG_ATLAS_SIDE, NAMETAG_LINE_PITCH_PX, NametagRecord, NametagScene,
-    java_nametag_line_backgrounds, nametag_line_left,
+    MAX_NAMETAG_RECORDS, NAMETAG_ATLAS_SIDE, NAMETAG_DIM_TEXT_ALPHA as DIM_TEXT_ALPHA,
+    NAMETAG_LINE_PITCH_PX, NametagRecord, NametagScene, java_nametag_line_backgrounds,
+    nametag_line_left,
 };
 use ui::{FONT_DESIGN_PIXEL_TEXELS, TextLayoutCache};
 use ui_screens::text::bounded_text;
@@ -41,7 +42,6 @@ const ACTOR_FLAG_ALWAYS_SHOW_NAME: u32 = 15;
 const SCORE_DISTANCE_SQUARED: f32 = 100.0;
 pub(super) const EXTRA_LINE_LIFT: f32 = 0.125;
 pub(super) const PLATE_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.25];
-pub(super) const DIM_TEXT_ALPHA: f32 = 32.0 / 255.0;
 /// Each line needs a background and text; ordinary labels add a second text pass.
 const NAMETAG_RECORDS_PER_LINE: usize = 2;
 /// Most lines one tag can consume in a scene, including its backing plates.

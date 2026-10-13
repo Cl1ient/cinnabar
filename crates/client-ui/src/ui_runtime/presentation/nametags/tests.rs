@@ -1,5 +1,6 @@
 use super::*;
 
+mod opacity;
 mod own_tag;
 mod view_depth;
 
@@ -659,29 +660,6 @@ fn own_tag_color_and_border_width_preserve_other_tags() {
     assert_eq!(scene.records[0].rect, [-5., -4., 5., -1.]);
     assert_eq!(scene.records[5].color, [1., 0., 0., 0.125]);
     assert_eq!(scene.records[6].color, [0., 1., 0., 0.125]);
-}
-
-/// Replacement removes a formatted tint, while opacity still preserves native sneaking alpha.
-#[test]
-fn replacement_and_default_text_opacity_preserve_native_coverage() {
-    let glyph = NametagRecord {
-        anchor: [1., 2., 3.],
-        color: [0., 1., 0., 0.125],
-        uv: [0., 0., 1., 1.],
-        ..Default::default()
-    };
-    let remote = NametagRecord {
-        anchor: [4., 5., 6.],
-        ..glyph
-    };
-    let mut scene = NametagScene {
-        records: vec![glyph, remote],
-        ..Default::default()
-    };
-    let style: ui::mod_hud::NametagStyle = serde_json::from_value(serde_json::json!({"opacity":0.5,"own_text_color":[1.,0.,0.,1.],"replace_own_text_color":true})).unwrap();
-    style_scene(&mut scene, &style, Some(glyph.anchor));
-    assert_eq!(scene.records[0].color, [1., 0., 0., 0.0625]);
-    assert_eq!(scene.records[1].color, [0., 1., 0., 0.0625]);
 }
 
 #[test]

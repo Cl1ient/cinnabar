@@ -28,7 +28,7 @@ mod tests {
     }
 
     #[test]
-    fn final_label_alpha_uses_the_java_cutoff() {
+    fn label_coverage_uses_the_java_cutoff() {
         let shader = from_wesl(include_str!("../nametag.wesl"), "nametag test");
         assert_eq!(
             crate::shader_source::alpha_discard_threshold(

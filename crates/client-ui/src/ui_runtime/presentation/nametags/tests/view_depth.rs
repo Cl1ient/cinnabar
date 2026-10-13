@@ -167,7 +167,7 @@ fn nearer_plates_attenuate_farther_text_in_every_sneak_combination() {
                 let alpha = record.color[3] * coverage;
                 let tested = record.depth_tested != 0;
                 let at = -record.anchor[2];
-                if alpha <= render_model::NAMETAG_ALPHA_CUTOFF || (tested && at > depth) {
+                if coverage <= render_model::NAMETAG_ALPHA_CUTOFF || (tested && at > depth) {
                     continue;
                 }
                 pixel = record.color[0] * alpha + pixel * (1.0 - alpha);
@@ -257,9 +257,7 @@ fn pitched_camera_sorts_lifted_multiline_planes_and_keeps_label_passes_together(
                 let alpha = if covered { record.color[3] } else { 0.0 };
                 let plane = Vec3::from_array(record.anchor) + Vec3::Y * record.line_lift;
                 let at = forward.dot(plane);
-                if alpha <= render_model::NAMETAG_ALPHA_CUTOFF
-                    || (record.depth_tested != 0 && at > depth)
-                {
+                if !covered || (record.depth_tested != 0 && at > depth) {
                     continue;
                 }
                 pixel = record.color[0] * alpha + pixel * (1.0 - alpha);

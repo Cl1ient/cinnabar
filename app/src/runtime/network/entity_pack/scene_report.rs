@@ -7,7 +7,7 @@ use bevy::math::{EulerRot, Mat4, Quat, Vec3, Vec4};
 use protocol::{
     ActorEvent, ActorKind, ActorMetadata, ActorMetadataValue, ActorSpawnEvent, WorldEvent,
 };
-use render_model::{NAMETAG_ALPHA_CUTOFF, NAMETAG_ATLAS_SIDE, NametagScene};
+use render_model::{NAMETAG_ATLAS_SIDE, NametagScene};
 use ui::TextLayoutCache;
 use {render_model::ActorArtworkPages, render_scene::ActorRenderScene};
 
@@ -457,20 +457,18 @@ fn draw_nametags(frame: &mut Frame, scene: &NametagScene, camera_rotation: Quat)
             (Vec3::from_array(corners[2]), [u1, v1]),
             (Vec3::from_array(corners[3]), [u0, v1]),
         ];
-        let color = record.color;
         let shade = |uv: [f32; 2]| {
-            let mut rgba = color;
-            if u1 >= 0.0 {
+            let texel = if u1 >= 0.0 {
                 let tx = ((uv[0] * side) as usize).min(NAMETAG_ATLAS_SIDE as usize - 1);
                 let ty = ((uv[1] * side) as usize).min(NAMETAG_ATLAS_SIDE as usize - 1);
                 let at = (ty * NAMETAG_ATLAS_SIDE as usize + tx) * 4;
-                let texel = &atlas[at..at + 4];
-                for (channel, value) in rgba.iter_mut().zip(texel) {
-                    *channel *= f32::from(*value) / 255.0;
-                }
-            }
-            (rgba[3] > NAMETAG_ALPHA_CUTOFF)
-                .then(|| rgba.map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8))
+                std::array::from_fn(|channel| f32::from(atlas[at + channel]) / 255.0)
+            } else {
+                [1.0; 4]
+            };
+            record
+                .fragment_color(texel)
+                .map(|rgba| rgba.map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8))
         };
         let depth_tested = record.depth_tested != 0;
         frame.triangle(

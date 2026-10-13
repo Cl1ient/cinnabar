@@ -130,7 +130,7 @@ fn projected_nametag_glyphs_keep_logical_page_order_without_shadow() {
     assert_eq!(scene.records.len(), 3);
     assert_eq!(
         scene.records[1].color,
-        [1.0, 1.0, 1.0, super::super::nametags::DIM_TEXT_ALPHA]
+        [1.0, 1.0, 1.0, render_model::NAMETAG_DIM_TEXT_ALPHA]
     );
     assert_eq!(scene.records[2].color, [1.0; 4]);
     assert_eq!(scene.atlas.len(), 1);

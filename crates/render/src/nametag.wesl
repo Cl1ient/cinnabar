@@ -65,11 +65,11 @@ fn nametag_fragment(input: VertexOutput) -> @location(0) vec4<f32> {
     if (input.textured != 0u) {
         @if(NAMETAG_GAMMA_BLEND)
         texel = tint_to_gamma(texel);
+        // Test atlas coverage before text opacity and cosmetic fading.
+        if (texel.a <= ALPHA_CUTOFF) {
+            discard;
+        }
         color = color * texel;
-    }
-    // Java tests the final alpha, including the dim copy's text opacity.
-    if (color.a <= ALPHA_CUTOFF) {
-        discard;
     }
     return color;
 }

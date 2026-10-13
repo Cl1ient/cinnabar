@@ -53,7 +53,7 @@ fn append_routes(
     routes: &[Route],
 ) {
     for route in routes {
-        if icons.icons.len() >= MAX_SESSION_ICONS {
+        if icons.icons.len() >= MAX_SESSION_ICONS && icons.block_sheets.len() >= MAX_SESSION_ICONS {
             break;
         }
         let Ok(index) = compiled
@@ -68,11 +68,14 @@ fn append_routes(
         if block.kind() != VisualKind::Cube {
             continue;
         }
-        if let Some(sprite) = pack_compiler::overlay_cube_icon(&compiled.overlay, faces) {
+        if icons.icons.len() < MAX_SESSION_ICONS
+            && let Some(sprite) = pack_compiler::overlay_cube_icon(&compiled.overlay, faces)
+        {
             icons.icons.push(session_icon(route, sprite));
         }
-        if let Some(sheet) =
-            render_model::equipment::blocks::overlay_face_sheet(&compiled.overlay, faces)
+        if icons.block_sheets.len() < MAX_SESSION_ICONS
+            && let Some(sheet) =
+                render_model::equipment::blocks::overlay_face_sheet(&compiled.overlay, faces)
         {
             icons.block_sheets.push(session_icon(route, sheet));
             let flags = faces.iter().fold(0, |flags, &id| {

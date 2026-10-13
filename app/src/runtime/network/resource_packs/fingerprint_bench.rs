@@ -260,7 +260,7 @@ fn join_part_timing() {
             false,
             BASE_MATERIAL_KEYS.get().map(|(keys, _)| keys),
             overlay_texture_layer_limit(),
-            BASE_MATERIAL_KEYS.get().map(|(_, base)| base.as_ref()),
+            base_world_assets(),
         );
     });
     time("icons", &|view| {

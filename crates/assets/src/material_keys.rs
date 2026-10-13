@@ -170,14 +170,15 @@ impl MaterialKeys {
             .into_iter()
             .map(|(key, tint)| (key.into_boxed_str(), tint))
             .collect();
-        Some(Self {
-            keys,
-            aliases,
-            fixed_tints,
-            terrain: wire.terrain,
-            material_sources: wire.material_sources,
-            block_sources: wire.block_sources,
-        })
+        Some(
+            Self {
+                keys,
+                aliases,
+                fixed_tints,
+                ..Self::default()
+            }
+            .with_sources(wire.terrain, wire.material_sources, wire.block_sources),
+        )
     }
 
     /// Material ids compiled from `key`; empty when the key is unknown.
@@ -197,7 +198,7 @@ impl MaterialKeys {
             .map(|(key, path)| (key.as_ref(), path.as_ref()))
     }
 
-    /// Retains the source facts that pack reload needs after unpacked assets are removed.
+    /// Retains reload source facts, with block bindings ordered by sequential visual ID.
     #[must_use]
     pub fn with_sources(
         mut self,
@@ -208,6 +209,8 @@ impl MaterialKeys {
         self.terrain = terrain.into_iter().collect();
         self.material_sources = materials.into_iter().collect();
         self.block_sources = blocks.into_iter().collect();
+        self.block_sources
+            .sort_unstable_by_key(|source| source.visual);
         self
     }
 

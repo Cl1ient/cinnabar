@@ -40,6 +40,11 @@ pub(super) fn compile_session_icons(
         .iter()
         .map(|icon| Arc::clone(&icon.identifier))
         .chain(
+            block_sheets
+                .iter()
+                .map(|sheet| Arc::clone(&sheet.identifier)),
+        )
+        .chain(
             block_misses
                 .iter()
                 .map(|(identifier, _)| Arc::clone(identifier)),
@@ -111,7 +116,7 @@ pub(super) fn compile_session_icons(
     }
     append_block_icons(&mut icons, block_icons, &mut retained_bytes);
     vanilla::append(view, &mut icons, &mut retained_bytes);
-    (!icons.is_empty() || !misses.is_empty()).then(|| {
+    (!icons.is_empty() || !block_sheets.is_empty() || !misses.is_empty()).then(|| {
         Arc::new(SessionIcons {
             icons,
             block_sheets,

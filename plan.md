@@ -9,6 +9,9 @@ rebinding eligibility after packing. Carrier fallback resolves raster paths acro
 retains baked atlas tint, and applies a new multiplier only to untinted sources. Pack
 and carrier images share filename resolution, tint, UV grids, and frame admission. Cube
 bindings derive UV rotation from the replacement binding shape and retained pillar mapping.
+Animation and selector caches use resolved state indices. Material admission reserves the
+base table, failed routes release unpublished allocations, and held sheets survive without
+thumbnails. Retained block bindings are ordered by visual ID.
 
 Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
 blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,

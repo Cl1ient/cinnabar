@@ -62,8 +62,9 @@ impl TextureSlots {
     }
 }
 
-/// Texture state owned by an in-progress selector, before any material references are published.
+/// Append-only texture and material state before a selector or carried route is published.
 pub(super) struct TextureCheckpoint {
+    materials: usize,
     sources: usize,
     bytes: usize,
     tile: u32,
@@ -73,9 +74,18 @@ pub(super) struct TextureCheckpoint {
 }
 
 impl Builder<'_> {
-    /// Saves the append-only texture state before preparing a multi-choice material.
+    /// Reserves combined base and overlay material space before preparing any new pixels.
+    pub(super) fn can_admit_materials(&self, count: usize) -> bool {
+        let base = self
+            .base_assets
+            .map_or(0, |assets| assets.materials().len());
+        count <= assets::MAX_MATERIALS.saturating_sub(base + self.overlay.materials.len())
+    }
+
+    /// Saves texture and material state before preparing a route that may fail.
     pub(super) fn texture_checkpoint(&self) -> TextureCheckpoint {
         TextureCheckpoint {
+            materials: self.overlay.materials.len(),
             sources: self.sources.len(),
             bytes: self.source_bytes,
             tile: self.tile_size,
@@ -85,8 +95,13 @@ impl Builder<'_> {
         }
     }
 
-    /// Releases unreferenced partial admissions and their cached successes and failures.
+    /// Releases unpublished materials, textures, and their cached successes and failures.
     pub(super) fn rollback_textures(&mut self, checkpoint: TextureCheckpoint) {
+        self.overlay.materials.truncate(checkpoint.materials);
+        self.terrain_materials
+            .retain(|_, id| (*id as usize) < checkpoint.materials);
+        self.materials
+            .retain(|_, id| (*id as usize) < checkpoint.materials);
         self.sources.truncate(checkpoint.sources);
         self.source_bytes = checkpoint.bytes;
         self.tile_size = checkpoint.tile;

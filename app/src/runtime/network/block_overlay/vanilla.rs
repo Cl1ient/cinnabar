@@ -164,7 +164,6 @@ impl Builder<'_> {
                 continue;
             }
             let mut faces = [None; 6];
-            let mut carried = [None; 6];
 
             for face in assets::BlockFace::ALL {
                 let index = face as usize;
@@ -192,24 +191,27 @@ impl Builder<'_> {
                         (flags & !assets::MATERIAL_FLAG_ROTATE_UV) | rotation,
                     );
                 }
-                let carried_key = carried_keys[index];
-                if let Some(key) = carried_key {
-                    carried[index] = self.terrain_material(
-                        keys,
-                        key,
-                        variant,
-                        flags & !assets::MATERIAL_FLAG_ROTATE_UV,
-                    );
-                }
             }
             if faces.iter().any(Option::is_some) {
                 self.overlay.face_overrides.push((source.visual, faces));
             }
+            let checkpoint = self.texture_checkpoint();
+            let carried = assets::BlockFace::ALL.map(|face| {
+                let index = face as usize;
+                let material = block.face(face).material_id();
+                let variant = keys
+                    .material_source(material)
+                    .map_or(0, |source| source.variant);
+                let flags = base.material(material).flags & !assets::MATERIAL_FLAG_ROTATE_UV;
+                self.terrain_material(keys, carried_keys[index]?, variant, flags)
+            });
             if carried.iter().all(Option::is_some) {
                 self.vanilla_carried.push(CarriedBlock {
                     visual: source.visual,
                     faces: carried.map(Option::unwrap),
                 });
+            } else {
+                self.rollback_textures(checkpoint);
             }
         }
     }
@@ -223,14 +225,17 @@ impl Builder<'_> {
             .catalog
             .choices(key, variant)
             .map_or(0, |choices| choices.len());
-        (0..count).any(|choice| {
+        let checkpoint = self.texture_checkpoint();
+        let changed = (0..count).any(|choice| {
             self.route_slot(TextureRoute::Catalog {
                 key: key.to_owned(),
                 variant,
                 choice: choice as u32,
             })
             .is_some()
-        })
+        });
+        self.rollback_textures(checkpoint);
+        changed
     }
 
     /// Builds one state selector with independent, normalized positional alternatives.
@@ -241,12 +246,14 @@ impl Builder<'_> {
         variant: u32,
         flags: u32,
     ) -> Option<u32> {
+        let variant = self.catalog.resolved_variant(key, variant)?;
         let cache_key = (key.to_owned(), variant, flags);
         if let Some(&id) = self.terrain_materials.get(&cache_key) {
             return Some(id);
         }
         let choices = self.catalog.choices(key, variant)?.to_vec();
-        if self.overlay.materials.len() + choices.len() + 1 > assets::MAX_MATERIALS {
+        let added = choices.len() + usize::from(choices.len() > 1);
+        if !self.can_admit_materials(added) {
             return None;
         }
         let checkpoint = self.texture_checkpoint();

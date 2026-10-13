@@ -276,3 +276,40 @@ fn carrier_source_identity_retains_the_filename_selected_by_the_image_loader() {
         );
     }
 }
+
+#[test]
+fn unordered_registry_records_publish_sources_in_visual_order() {
+    let pack = pack(false);
+    let (first, visual, materials) = cube();
+    let mut second = first.clone();
+    second.sequential_id = 1;
+    second.network_hash = 2;
+    second.name = "minecraft:other".into();
+    let keys = retain(
+        MaterialKeys::default(),
+        (&pack, Path::new("")),
+        &BTreeMap::new(),
+        &materials,
+        (&[second, first], &[visual; 2]),
+        &[],
+        &[],
+    )
+    .unwrap();
+    assert_eq!(
+        keys.block_sources()
+            .iter()
+            .map(|source| source.visual)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+    let restored =
+        MaterialKeys::from_json(&keys.to_json(materials.len() as u32), materials.len()).unwrap();
+    for visual in [0, 1] {
+        assert!(
+            restored
+                .block_sources()
+                .binary_search_by_key(&visual, |source| source.visual)
+                .is_ok()
+        );
+    }
+}

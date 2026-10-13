@@ -35,9 +35,16 @@ impl Entry {
 
     /// Out-of-range state selectors use the default variant.
     pub fn variant(&self, variant: u32) -> &[Choice] {
-        self.variants
-            .get(variant as usize)
-            .unwrap_or(&self.variants[0])
+        &self.variants[self.resolved_variant(variant) as usize]
+    }
+
+    /// Resolves the state index used by both raster selection and animation metadata.
+    pub fn resolved_variant(&self, variant: u32) -> u32 {
+        if (variant as usize) < self.variants.len() {
+            variant
+        } else {
+            0
+        }
     }
 }
 
@@ -50,16 +57,21 @@ pub fn entries(view: &LayeredPackView) -> HashMap<String, Entry> {
         else {
             continue;
         };
-        for (key, value) in data {
-            if result.len() >= MAX_CATALOG_ENTRIES && !result.contains_key(&key) {
-                break;
-            }
-            if let Some(entry) = parse_entry(&value) {
-                result.insert(key, entry);
-            }
-        }
+        merge_entries(&mut result, data);
     }
     result
+}
+
+/// Keeps later overrides eligible even when new keys no longer fit in the catalog.
+fn merge_entries(result: &mut HashMap<String, Entry>, data: serde_json::Map<String, Value>) {
+    for (key, value) in data {
+        if result.len() >= MAX_CATALOG_ENTRIES && !result.contains_key(&key) {
+            continue;
+        }
+        if let Some(entry) = parse_entry(&value) {
+            result.insert(key, entry);
+        }
+    }
 }
 
 /// Reads bounded state variants, paths, literal tints, grids, and weighted choices.
@@ -153,6 +165,30 @@ fn parse_choice(value: &Value) -> Option<Choice> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_catalogs_still_accept_later_overrides_after_rejecting_new_keys() {
+        let entry = parse_entry(&serde_json::json!({"textures":"textures/old"})).unwrap();
+        let mut entries = (0..MAX_CATALOG_ENTRIES)
+            .map(|index| (format!("z_{index:05}"), entry.clone()))
+            .collect::<HashMap<_, _>>();
+        merge_entries(
+            &mut entries,
+            serde_json::json!({
+                "a_new":{"textures":"textures/unadmitted"},
+                "z_00000":{"textures":"textures/replacement"}
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        );
+        assert_eq!(entries.len(), MAX_CATALOG_ENTRIES);
+        assert!(!entries.contains_key("a_new"));
+        assert_eq!(
+            entries["z_00000"].variant(0)[0].path,
+            "textures/replacement"
+        );
+    }
 
     #[test]
     fn state_arrays_and_weighted_choices_remain_separate() {

@@ -84,7 +84,9 @@ pub(super) fn compile_block_overlay(
     max_texture_array_layers: u32,
     base_assets: Option<&assets::RuntimeAssets>,
 ) -> Option<CompiledBlockOverlay> {
-    if max_texture_array_layers == 0 {
+    if max_texture_array_layers == 0
+        || base_assets.is_some_and(|base| base.materials().len() >= assets::MAX_MATERIALS)
+    {
         return None;
     }
     let legacy = legacy::TextureBindings::new(view);
@@ -251,11 +253,14 @@ impl Builder<'_> {
                 None | Some(FULL_BLOCK | FULL_BLOCK_V1)
             )
         {
+            let checkpoint = self.texture_checkpoint();
             let carried = self.cube(&state.components);
             if carried.support == VisualSupport::Exact {
                 self.overlay
                     .carried_cube_faces
                     .push((self.overlay.visuals.len() as u32, carried.faces));
+            } else {
+                self.rollback_textures(checkpoint);
             }
         }
         self.overlay.visuals.push(visual);
@@ -268,6 +273,7 @@ impl Builder<'_> {
         if let Some(visual) = self.visuals.get(&key) {
             return *visual;
         }
+        let checkpoint = self.texture_checkpoint();
         let visual = match components.geometry.as_deref() {
             None | Some(FULL_BLOCK | FULL_BLOCK_V1) if components.random_offset.is_none() => {
                 self.cube(components)
@@ -283,6 +289,9 @@ impl Builder<'_> {
                 }
             },
         };
+        if visual.kind == VisualKind::Diagnostic {
+            self.rollback_textures(checkpoint);
+        }
         self.visuals.insert(key, visual);
         visual
     }
@@ -481,6 +490,9 @@ impl Builder<'_> {
         let texture = chosen.texture.to_string();
         if let Some(&material) = self.materials.get(&(texture.clone(), flags)) {
             return (material, alpha_flags, two_sided);
+        }
+        if !self.can_admit_materials(1) {
+            return (DIAGNOSTIC_MATERIAL, 0, false);
         }
         let Some(slot) = self.texture_slot(&texture) else {
             return (DIAGNOSTIC_MATERIAL, 0, false);

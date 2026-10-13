@@ -66,3 +66,25 @@ fn complete_sources_round_trip_with_variant_and_carried_binding_identity() {
     bad["block_sources"][0]["source_faces"][0] = 3.into();
     assert!(MaterialKeys::from_json(&serde_json::to_vec(&bad).unwrap(), 3).is_none());
 }
+
+#[test]
+fn older_unordered_source_arrays_are_normalized_when_decoded() {
+    let keys = MaterialKeys::default().with_sources(
+        [],
+        [],
+        [0, 1].map(|visual| super::BlockTextureSource {
+            visual,
+            name: "minecraft:fixture".into(),
+            binding_name: "fixture".into(),
+            source_faces: [0, 1, 2, 3, 4, 5],
+            source_rotations: [false; 6],
+            cube_binding_eligible: true,
+            carried_keys: std::array::from_fn(|_| None),
+            carried_fallback_keys: std::array::from_fn(|_| None),
+        }),
+    );
+    let mut wire: serde_json::Value = serde_json::from_slice(&keys.to_json(1)).unwrap();
+    wire["block_sources"].as_array_mut().unwrap().reverse();
+    let decoded = MaterialKeys::from_json(&serde_json::to_vec(&wire).unwrap(), 1).unwrap();
+    assert_eq!(decoded.block_sources(), keys.block_sources());
+}

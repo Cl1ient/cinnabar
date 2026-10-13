@@ -314,7 +314,7 @@ fn compile_application(
                                 hashed_block_ids,
                                 BASE_MATERIAL_KEYS.get().map(|(keys, _)| keys),
                                 max_layers,
-                                BASE_MATERIAL_KEYS.get().map(|(_, base)| base.as_ref()),
+                                base_world_assets(),
                             )
                             .map(Arc::new)
                         },
@@ -546,6 +546,22 @@ static BASE_MATERIAL_KEYS: std::sync::OnceLock<(
     assets::material_keys::MaterialKeys,
     Arc<assets::RuntimeAssets>,
 )> = std::sync::OnceLock::new();
+
+static BASE_WORLD_ASSETS: std::sync::OnceLock<Arc<assets::RuntimeAssets>> =
+    std::sync::OnceLock::new();
+
+/// Keeps material admission bounded by the world table even when its optional sidecar is absent.
+pub(crate) fn set_base_world_assets(base: Arc<assets::RuntimeAssets>) {
+    let _ = BASE_WORLD_ASSETS.set(base);
+}
+
+/// Uses the sidecar's matching world, or the startup world when no sidecar was available.
+fn base_world_assets() -> Option<&'static assets::RuntimeAssets> {
+    BASE_MATERIAL_KEYS
+        .get()
+        .map(|(_, base)| base.as_ref())
+        .or_else(|| BASE_WORLD_ASSETS.get().map(AsRef::as_ref))
+}
 
 /// Installs immutable source facts and pixels from the same world carrier.
 pub(crate) fn set_base_material_keys(

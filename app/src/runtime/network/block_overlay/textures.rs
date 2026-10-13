@@ -150,6 +150,11 @@ impl<'a> TextureCatalog<'a> {
         Some(self.terrain.get(key)?.variant(variant))
     }
 
+    /// Resolves the state index used for selector caching and animation eligibility.
+    pub(super) fn resolved_variant(&self, key: &str, variant: u32) -> Option<u32> {
+        Some(self.terrain.get(key)?.resolved_variant(variant))
+    }
+
     /// Decodes a state choice through the shared raster, tint, and image-source resolution.
     #[cfg(test)]
     pub(super) fn decode_choice(
@@ -169,46 +174,39 @@ impl<'a> TextureCatalog<'a> {
         .map(|image| image.texture)
     }
 
-    /// Resolves the winning choice independently of the caller's catalog/path representation.
+    /// Returns the resolved state and choice indices together with the winning raster policy.
     fn resolve_choice(
         &self,
         route: &super::TextureRoute,
-    ) -> Option<&pack_runtime::pack_textures::terrain::Choice> {
+    ) -> Option<(u32, usize, &pack_runtime::pack_textures::terrain::Choice)> {
         use pack_runtime::pack_textures::texture_image_paths;
-        let key = route.key();
-        match route {
+        let entry = self.terrain.get(route.key())?;
+        let (variant, choice) = match route {
             super::TextureRoute::Catalog {
                 variant, choice, ..
-            } => self
-                .choices(key, *variant)
-                .and_then(|choices| choices.get(*choice as usize)),
+            } => (entry.resolved_variant(*variant), *choice as usize),
             super::TextureRoute::Path { variant, path, .. } => {
                 let paths = texture_image_paths(path);
-                self.choices(key, *variant)?.iter().find(|choice| {
+                let variant = entry.resolved_variant(*variant);
+                let choice = entry.variant(variant).iter().position(|choice| {
                     texture_image_paths(&choice.path)
                         .iter()
                         .any(|path| paths.contains(path))
-                })
+                })?;
+                (variant, choice)
             }
-        }
+        };
+        Some((variant, choice, entry.variant(variant).get(choice)?))
     }
 
     /// Retains every pixel or animation property that can change an admitted raster slot.
     pub(super) fn identity(&self, route: &super::TextureRoute) -> Option<TextureIdentity> {
-        let Some(choice) = self.resolve_choice(route) else {
+        let Some((variant, index, choice)) = self.resolve_choice(route) else {
             self.diagnostics
                 .failure(FailureReason::TerrainKeyMissing, route.key(), None);
             return None;
         };
-        let animate = match route {
-            super::TextureRoute::Catalog {
-                variant, choice, ..
-            } => *variant == 0 && *choice == 0,
-            super::TextureRoute::Path { .. } => self
-                .choices(route.key(), 0)
-                .and_then(|choices| choices.first())
-                .is_some_and(|first| first.path == choice.path),
-        };
+        let animate = variant == 0 && index == 0;
         Some(TextureIdentity {
             path: choice.path.clone(),
             tint: choice.tint,
@@ -227,7 +225,7 @@ impl<'a> TextureCatalog<'a> {
     ) -> Option<TextureImage> {
         use pack_runtime::pack_textures::texture_image_paths;
         let key = route.key();
-        let Some(choice) = self.resolve_choice(route) else {
+        let Some((_, _, choice)) = self.resolve_choice(route) else {
             self.diagnostics
                 .failure(FailureReason::TerrainKeyMissing, key, None);
             return None;

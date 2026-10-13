@@ -6,7 +6,7 @@ use std::{
 };
 
 use assets::RuntimeFontCatalog;
-use client_world::ActorSnapshot;
+use client_world::{ACTOR_FLAG_SHOW_NAME, ActorSnapshot};
 use glam::Vec3;
 use protocol::{ActorKind, ActorMetadataValue};
 use render_model::{
@@ -37,7 +37,6 @@ const METADATA_SCORE: u32 = 84;
 const METADATA_RENDER_DISTANCE: u32 = 140;
 const ACTOR_FLAG_SNEAKING: u32 = 1;
 const ACTOR_FLAG_INVISIBLE: u32 = 5;
-const ACTOR_FLAG_SHOW_NAME: u32 = 14;
 const ACTOR_FLAG_ALWAYS_SHOW_NAME: u32 = 15;
 const SCORE_DISTANCE_SQUARED: f32 = 100.0;
 pub(super) const EXTRA_LINE_LIFT: f32 = 0.125;

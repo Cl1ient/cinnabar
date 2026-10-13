@@ -15,6 +15,9 @@ reads = [
 tracy = []
 publication-test-support = []
 benchmark-support = []
+# Bench binaries use an uninstrumented allocator and the requested Criterion sample count.
+runtime-profile = []
+benchmark-mimalloc = ["runtime-profile"]
 
 [dependencies]
 simulation-clock = { path = "../simulation-clock" }
@@ -39,6 +42,7 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [dev-dependencies]
+mimalloc.workspace = true
 test-alloc = { path = "../test-alloc" }
 test-time = { path = "../test-time" }
 serde_json = "1"

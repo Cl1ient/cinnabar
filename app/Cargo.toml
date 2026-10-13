@@ -49,8 +49,11 @@ frame-trace = ["bevy/trace_chrome", "bevy/debug"]
 tracy = ["bevy/trace", "bevy/debug", "dep:tracing-tracy", "dep:profiling", "chunk-pipeline/tracy", "render/tracy", "client-ui/tracy"]
 # Compiles the offline pack reports and benchmarks into the test build.
 reports = []
+# Opt-in allocator for release-profile measurements.
+mimalloc = ["dep:mimalloc"]
 
 [dependencies]
+mimalloc = { workspace = true, optional = true }
 pack-json = { path = "../crates/pack-json" }
 env-compat = { path = "../crates/env-compat" }
 simulation-clock = { path = "../crates/simulation-clock" }

@@ -36,6 +36,16 @@ fn retained_honey_fronts_resolve_the_second_catalog_variant() {
     std::fs::write(root.path().join("textures/flipbook_textures.json"), "[]").unwrap();
     let pack = crate::read_pack(root.path()).unwrap();
     let descriptors = bee_housing_material_descriptors(&pack).unwrap();
+    std::fs::create_dir_all(root.path().join("textures/blocks")).unwrap();
+    for (descriptor, _) in &descriptors {
+        image::RgbaImage::from_pixel(1, 1, image::Rgba([31, 47, 59, 255]))
+            .save(
+                root.path()
+                    .join(descriptor.path.as_ref())
+                    .with_extension("png"),
+            )
+            .unwrap();
+    }
     let ids = descriptors
         .iter()
         .enumerate()
@@ -62,6 +72,7 @@ fn retained_honey_fronts_resolve_the_second_catalog_variant() {
     for (id, source) in keys.material_sources() {
         let honey = source.path.ends_with("_honey");
         assert_eq!(source.variant, u32::from(honey), "material {id}");
+        assert_eq!(source.raster.as_ref(), format!("{}.png", source.path));
         let entry = keys
             .terrain_entries()
             .find(|(key, _)| *key == source.key.as_ref())
